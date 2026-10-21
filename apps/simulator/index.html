@@ -49,6 +49,11 @@
         <ol class="captions" id="captions" aria-live="polite" aria-relevant="additions" aria-label="Conversation transcript" tabindex="0"></ol>
 
         <div class="composer">
+          <fieldset class="speaker" id="speaker">
+            <legend class="visually-hidden">Who is speaking</legend>
+            <label><input type="radio" name="speaker" value="person" checked /> <span id="speaker-person-label">Margaret, at home</span></label>
+            <label><input type="radio" name="speaker" value="family" id="speaker-family" /> <span id="speaker-family-label">Dana, family (own assistant)</span></label>
+          </fieldset>
           <div class="routine">
             <button id="routine" class="btn" type="button">
               <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" /></svg>
@@ -58,7 +63,7 @@
           </div>
 
           <form id="say-form" class="say" autocomplete="off">
-            <label for="say-input">What Margaret says</label>
+            <label for="say-input" id="say-label">What Margaret says</label>
             <div class="say-row">
               <input id="say-input" name="say" maxlength="200" placeholder="Type a reply, or pick one below" />
               <button type="button" id="mic" class="btn ghost" aria-pressed="false" hidden>
@@ -69,7 +74,7 @@
             </div>
           </form>
 
-          <div class="chips" role="group" aria-label="Example replies">
+          <div class="chips" data-for="person" role="group" aria-label="Example replies">
             <button type="button" class="chip" data-say="I think so, maybe after lunch">“I think so, maybe after lunch”</button>
             <button type="button" class="chip" data-say="Yes, done.">“Yes, done.”</button>
             <button type="button" class="chip" data-say="Not yet.">“Not yet.”</button>
@@ -77,6 +82,11 @@
             <button type="button" class="chip" data-say="I want to go home. Where is everyone?">“I want to go home. Where is everyone?”</button>
             <button type="button" class="chip" data-say="I fell and I can't get up.">“I fell and I can't get up.”</button>
             <button type="button" class="chip" data-say="Pause my check-ins for today.">“Pause my check-ins for today.”</button>
+          </div>
+          <div class="chips" data-for="family" role="group" aria-label="Example family questions" hidden>
+            <button type="button" class="chip" data-say="How is Mom doing today?">“How is Mom doing today?”</button>
+            <button type="button" class="chip" data-say="Did she answer the lunchtime check?">“Did she answer the lunchtime check?”</button>
+            <button type="button" class="chip" data-say="Yes, she did it.">“Yes, she did it.”</button>
           </div>
 
         </div>

@@ -7,7 +7,7 @@
 // Linking a household: the person linking enters a one-time link code created in the caregiver console.
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { hashSecret, normalizeLinkCode, randomToken, type OAuthGrant, type Store } from '@closed-loop/core';
+import { hashSecret, normalizeLinkCode, randomToken, type LinkRole, type OAuthGrant, type Store } from '@closed-loop/core';
 
 export const SCOPE_SERVICE = 'mcp:service';
 export const SCOPE_TOOLS = 'mcp:tools';
@@ -36,6 +36,8 @@ export interface OAuthConfig {
 export interface AccessContext {
   kind: 'static' | 'user' | 'service';
   householdId?: string;
+  /** User tokens only: whose assistant this is. Static demo tokens act for both. */
+  role?: LinkRole;
   scopes: string[];
   clientId?: string;
 }
@@ -92,9 +94,10 @@ export function createOAuth(cfg: OAuthConfig, store: Store) {
     return !!client.sameOriginRedirectPath && redirectUri === `${origin}${client.sameOriginRedirectPath}`;
   }
 
-  function issueAccessToken(origin: string, resource: string, sub: string, scope: string, clientId: string) {
+  function issueAccessToken(origin: string, resource: string, sub: string, scope: string, clientId: string, role?: LinkRole) {
     const now = Math.floor(Date.now() / 1000);
-    return signJwt({ iss: origin, sub, aud: resource, scope, client_id: clientId, iat: now, exp: now + accessSeconds, jti: randomToken(12) }, cfg.signingSecret);
+    const claims = { iss: origin, sub, aud: resource, scope, client_id: clientId, iat: now, exp: now + accessSeconds, jti: randomToken(12), ...(role === 'family' ? { role } : {}) };
+    return signJwt(claims, cfg.signingSecret);
   }
 
   async function issueUserTokens(origin: string, grant: OAuthGrant) {
@@ -102,7 +105,7 @@ export function createOAuth(cfg: OAuthConfig, store: Store) {
     const expiresAt = new Date(Date.now() + refreshDays * 86_400_000).toISOString();
     await store.putRefreshToken(grant.householdId, hashSecret(refresh), { ...grant, codeChallenge: undefined, redirectUri: undefined }, expiresAt);
     return json(200, {
-      access_token: issueAccessToken(origin, grant.resource, grant.householdId, grant.scope, grant.clientId),
+      access_token: issueAccessToken(origin, grant.resource, grant.householdId, grant.scope, grant.clientId, grant.role),
       token_type: 'Bearer',
       expires_in: accessSeconds,
       refresh_token: refresh,
@@ -237,12 +240,13 @@ ${error ? `<p class="err" id="link-err" role="alert">${escapeHtml(error)}</p>` :
     const ap = validateAuthorize(form, origin, canonical);
     if (ap instanceof Response) return ap;
     if (form.get('decision') !== 'allow') return redirectWith(ap.redirectUri, { error: 'access_denied', error_description: 'The person cancelled linking.', state: ap.state, iss: origin });
-    const householdId = await store.consumeLinkCode(hashSecret(normalizeLinkCode(form.get('link_code') ?? '')), new Date());
-    if (!householdId) return consentPage(ap, form, 'That code did not work. It may have expired or been used already. Create a new one in the caregiver console.');
+    const link = await store.consumeLinkCode(hashSecret(normalizeLinkCode(form.get('link_code') ?? '')), new Date());
+    if (!link) return consentPage(ap, form, 'That code did not work. It may have expired or been used already. Create a new one in the caregiver console.');
     const code = randomToken(32);
     const grant: OAuthGrant = {
       clientId: ap.client.id,
-      householdId,
+      householdId: link.householdId,
+      role: link.role,
       scope: ap.scope,
       resource: ap.resource,
       redirectUri: ap.redirectUri,
@@ -281,7 +285,7 @@ ${error ? `<p class="err" id="link-err" role="alert">${escapeHtml(error)}</p>` :
         householdId: grant.householdId,
         at: new Date().toISOString(),
         type: 'account_linked',
-        detail: `A voice assistant was linked with a link code (${client.secret ? 'Alexa+ add-on' : 'simulated client'}).`,
+        detail: `${grant.role === 'family' ? 'A family member\u2019s voice assistant' : 'A voice assistant'} was linked with a link code (${client.secret ? 'Alexa+ add-on' : 'simulated client'}).`,
       });
       return issueUserTokens(origin, grant);
     }
@@ -331,7 +335,7 @@ ${error ? `<p class="err" id="link-err" role="alert">${escapeHtml(error)}</p>` :
     const sub = String(claims.sub ?? '');
     if (sub.startsWith('client:')) return { kind: 'service', scopes, clientId: String(claims.client_id ?? '') };
     if (!scopes.includes(SCOPE_TOOLS)) return undefined;
-    return { kind: 'user', householdId: sub, scopes, clientId: String(claims.client_id ?? '') };
+    return { kind: 'user', householdId: sub, role: claims.role === 'family' ? 'family' : 'person', scopes, clientId: String(claims.client_id ?? '') };
   }
 
   return { authorize, token, revoke, verifyAccess };

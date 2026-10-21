@@ -62,14 +62,14 @@ export interface Store extends ClockStore {
   deleteHousehold(id: HouseholdId): Promise<number>;
 
   // ---- OAuth (only hashes of codes and tokens are stored; every consume is atomic and single-use) ----
-  putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string): Promise<void>;
+  putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string, role?: LinkRole): Promise<void>;
   /** Returns the household and deletes the code, or undefined when unknown, used, or expired. */
-  consumeLinkCode(codeHash: string, now: Date): Promise<HouseholdId | undefined>;
+  consumeLinkCode(codeHash: string, now: Date): Promise<{ householdId: HouseholdId; role: LinkRole } | undefined>;
   putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string): Promise<void>;
   consumeAuthCode(codeHash: string, now: Date): Promise<OAuthGrant | undefined>;
   putRefreshToken(householdId: HouseholdId, tokenHash: string, grant: OAuthGrant, expiresAt: string): Promise<void>;
   consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date): Promise<OAuthGrant | undefined>;
-  listRefreshTokens(householdId: HouseholdId): Promise<Array<{ clientId: string; createdAt: string; expiresAt: string }>>;
+  listRefreshTokens(householdId: HouseholdId): Promise<Array<{ clientId: string; role: LinkRole; createdAt: string; expiresAt: string }>>;
   deleteRefreshTokens(householdId: HouseholdId): Promise<number>;
 
   appendMailLog(entry: MailLogEntry): Promise<void>;
@@ -89,10 +89,15 @@ export interface MailLogEntry {
   kind: string;
 }
 
+/** Whose voice assistant a link is for: the person's own, or a family member's (who may read, never answer). */
+export type LinkRole = 'person' | 'family';
+
 /** What an authorization code or refresh token stands for. */
 export interface OAuthGrant {
   clientId: string;
   householdId: HouseholdId;
+  /** Missing on grants made before roles existed: treated as 'person'. */
+  role?: LinkRole;
   scope: string;
   resource: string;
   redirectUri?: string;
@@ -241,17 +246,17 @@ export class MemoryStore implements Store {
     return this.caps.get(`${id}|${date}`) ?? 0;
   }
 
-  private linkCodes = new Map<string, { householdId: HouseholdId; expiresAt: string }>();
+  private linkCodes = new Map<string, { householdId: HouseholdId; role: LinkRole; expiresAt: string }>();
   private authCodes = new Map<string, { grant: OAuthGrant; expiresAt: string }>();
   private refreshTokens = new Map<string, { householdId: HouseholdId; grant: OAuthGrant; expiresAt: string }>();
 
-  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string) {
-    this.linkCodes.set(codeHash, { householdId, expiresAt });
+  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string, role: LinkRole = 'person') {
+    this.linkCodes.set(codeHash, { householdId, role, expiresAt });
   }
   async consumeLinkCode(codeHash: string, now: Date) {
     const v = this.linkCodes.get(codeHash);
     this.linkCodes.delete(codeHash);
-    return v && new Date(v.expiresAt) > now ? v.householdId : undefined;
+    return v && new Date(v.expiresAt) > now ? { householdId: v.householdId, role: v.role } : undefined;
   }
   async putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string) {
     this.authCodes.set(codeHash, { grant: clone(grant), expiresAt });
@@ -273,7 +278,7 @@ export class MemoryStore implements Store {
   async listRefreshTokens(householdId: HouseholdId) {
     return [...this.refreshTokens.values()]
       .filter((v) => v.householdId === householdId)
-      .map((v) => ({ clientId: v.grant.clientId, createdAt: v.grant.createdAt, expiresAt: v.expiresAt }));
+      .map((v) => ({ clientId: v.grant.clientId, role: v.grant.role ?? 'person', createdAt: v.grant.createdAt, expiresAt: v.expiresAt }));
   }
   async deleteRefreshTokens(householdId: HouseholdId) {
     let n = 0;

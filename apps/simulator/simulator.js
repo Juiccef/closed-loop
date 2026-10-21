@@ -3,7 +3,7 @@
 
 import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph } from '/shared/app.js';
 
-const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map() };
+const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana' };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -13,8 +13,8 @@ $('#voice-notice').textContent = VOICE_TURNS_NOTICE;
 
 function caption(who, text, extra = '') {
   const li = document.createElement('li');
-  const label = who === 'assistant' ? 'Assistant (simulated)' : who === 'person' ? 'Margaret' : 'Simulation';
-  li.className = `cap ${who}`;
+  const label = who === 'assistant' ? 'Assistant (simulated)' : who === 'person' ? state.personName : who === 'family' ? `${state.familyName} (family, own assistant)` : 'Simulation';
+  li.className = `cap ${who === 'family' ? 'person family' : who}`;
   li.innerHTML = `<span class="who">${label}</span><span class="text">${esc(text)}</span>${typeof extra === 'string' ? extra : ''}`;
   if (extra instanceof Node) li.append(extra);
   $('#captions').append(li);
@@ -30,7 +30,8 @@ function orb(s, label) {
 function say(text, extra = '') {
   caption('assistant', text, extra);
   orb('speaking', 'Speaking');
-  const done = () => orb('idle', state.current ? 'Listening for Margaret’s answer' : 'Waiting for someone to start a check-in');
+  const done = () =>
+    orb('idle', state.speaker === 'family' ? `${state.familyName} can ask how the day went` : state.current ? `Listening for ${state.personName}’s answer` : 'Waiting for someone to start a check-in');
   if (state.speak && 'speechSynthesis' in window) {
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.95;
@@ -199,9 +200,23 @@ async function routineStart() {
   handleDue(r.structuredContent, r);
 }
 
+// A family member asking from their own assistant: never recorded as the person's answer.
+async function familyAsks(t) {
+  caption('family', t);
+  orb('thinking', `Planner (${state.plannerKind}) choosing a tool`);
+  const started = performance.now();
+  const plan = await api('/planner', { method: 'POST', body: { userText: t, speaker: 'family', current: null, recent: null, tools: state.mcp.tools } });
+  traffic({ kind: 'planner', tag: `planner: ${plan.planner}`, title: plan.toolCall ? `→ ${plan.toolCall.name}` : '→ reply only', meta: `${Math.round(performance.now() - started)} ms`, line: plan.rationale, body: plan });
+  if (!plan.toolCall) return say(plan.reply);
+  const r = await callTool(plan.toolCall.name, plan.toolCall.arguments);
+  if (r.isError) return say(r.content?.[0]?.text || 'Sorry, something went wrong.');
+  say(r.structuredContent.say, mountCard(plan.toolCall.name, plan.toolCall.arguments, r) || '');
+}
+
 async function personSays(text) {
   const t = text.trim().slice(0, 200);
   if (!t) return;
+  if (state.speaker === 'family') return familyAsks(t);
   caption('person', t);
   orb('thinking', `Planner (${state.plannerKind}) choosing a tool`);
   const started = performance.now();
@@ -453,6 +468,14 @@ async function main() {
   const demo = await api('/admin/demo-config');
   state.household = demo.householdId;
   state.plannerKind = demo.planner;
+  const view = await api(`/api/households/${state.household}`).catch(() => null);
+  if (view) {
+    state.personName = view.household.recipientName || state.personName;
+    const first = view.household.contacts.find((c) => view.ladder.l1ContactIds.includes(c.id)) ?? view.household.contacts[0];
+    if (first) state.familyName = first.name;
+    $('#speaker-person-label').textContent = `${state.personName}, at home`;
+    $('#speaker-family-label').textContent = `${state.familyName}, family (own assistant)`;
+  }
   $('#traffic-sub').textContent = `POST ${new URL(demo.mcpUrl).pathname} · Streamable HTTP · stateless · planner: ${demo.planner}`;
   state.mcp = new McpClient(demo.mcpUrl, demo.mcpToken, traffic);
   await state.mcp.initialize();
@@ -509,6 +532,16 @@ $('#demo-start').addEventListener(
     await Promise.all([loadClock(), refresh()]);
   }),
 );
+function setSpeaker(who) {
+  state.speaker = who;
+  const family = who === 'family';
+  $('#say-label').textContent = family ? `What ${state.familyName} asks, from ${state.familyName}\u2019s own assistant` : `What ${state.personName} says`;
+  $$('.chips').forEach((g) => (g.hidden = g.dataset.for !== who));
+  $('.routine').hidden = family;
+  orb('idle', family ? `${state.familyName} can ask how the day went` : state.current ? `Listening for ${state.personName}\u2019s answer` : 'Waiting for someone to start a check-in');
+}
+$$('input[name=speaker]').forEach((r) => r.addEventListener('change', () => r.checked && setSpeaker(r.value)));
+
 $('#speak-toggle').addEventListener('change', (e) => {
   state.speak = e.target.checked;
   if (!state.speak && 'speechSynthesis' in window) speechSynthesis.cancel();

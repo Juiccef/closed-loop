@@ -493,6 +493,15 @@ legend {
 }
 
 /* ---- Link a voice assistant ---- */
+.roles-note {
+  margin-top: -0.5rem;
+}
+.roles-note .help {
+  margin: 0;
+}
+.head-actions {
+  margin-top: 0;
+}
 .link-code {
   display: inline-flex;
   flex-direction: column;

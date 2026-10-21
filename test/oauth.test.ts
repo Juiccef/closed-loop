@@ -25,9 +25,9 @@ async function setup() {
     { bearerTokens: { 'static-demo': H }, allowedOrigins: [], allowSameOrigin: true, resourceUrl: '', includeWwwAuthenticate: false, oauth },
     coreBackend(d.store),
   );
-  const linkCode = async () => {
+  const linkCode = async (role: 'person' | 'family' = 'person') => {
     const code = generateLinkCode();
-    await d.store.putLinkCode(hashSecret(code), H, new Date(Date.now() + 600_000).toISOString());
+    await d.store.putLinkCode(hashSecret(code), H, new Date(Date.now() + 600_000).toISOString(), role);
     return code;
   };
   const authorizeUrl = (over: Record<string, string> = {}) => {
@@ -98,6 +98,45 @@ describe('OAuth 2.1 account linking (authorization code + PKCE)', () => {
     const call = await t.mcp(body.access_token, 'tools/call', { name: 'get_due_checkins', arguments: {} });
     expect(call.status).toBe(200);
     expect((await call.json()).result.structuredContent.checkins[0].label).toBe('your morning routine');
+  });
+
+  it("a family member's link can read the day but never answer for the person", async () => {
+    const t = await setup();
+    const linkAs = async (role: 'person' | 'family') => {
+      const code = t.codeFrom(await t.approve(await t.linkCode(role))).get('code')!;
+      return (await (await t.token({ grant_type: 'authorization_code', code, code_verifier: VERIFIER, client_id: 'alexa-plus', resource: RESOURCE })).json()) as {
+        access_token: string;
+        refresh_token: string;
+      };
+    };
+    setLocal('2026-10-19 08:05');
+    const person = await linkAs('person');
+    const due = (await (await t.mcp(person.access_token, 'tools/call', { name: 'get_due_checkins', arguments: {} })).json()).result.structuredContent;
+    const occurrenceId = due.checkins[0].occurrenceId;
+
+    const family = await linkAs('family');
+    for (const [name, args] of [
+      ['get_due_checkins', {}],
+      ['record_response', { occurrenceId, response: 'done' }],
+      ['defer_checkin', { occurrenceId, until: 'in_1_hour' }],
+      ['pause_checkins', { scope: 'today' }],
+    ] as const) {
+      const r = (await (await t.mcp(family.access_token, 'tools/call', { name, arguments: args })).json()).result;
+      expect(r.isError, name).toBe(true);
+      expect(r.content[0].text).toContain('Only the person can answer');
+    }
+    const summary = (await (await t.mcp(family.access_token, 'tools/call', { name: 'get_family_summary', arguments: {} })).json()).result;
+    expect(summary.isError).toBeFalsy();
+    expect(summary.structuredContent.items[0].recorded).toBe('asked, no answer yet');
+
+    // The role survives a refresh-token rotation.
+    const refreshed = await (await t.token({ grant_type: 'refresh_token', refresh_token: family.refresh_token, client_id: 'alexa-plus' })).json();
+    const again = (await (await t.mcp(refreshed.access_token, 'tools/call', { name: 'record_response', arguments: { occurrenceId, response: 'done' } })).json()).result;
+    expect(again.isError).toBe(true);
+
+    // The person's own link still answers.
+    const ok = (await (await t.mcp(person.access_token, 'tools/call', { name: 'record_response', arguments: { occurrenceId, response: 'done' } })).json()).result;
+    expect(ok.structuredContent.recordedWording).toBe('reported by the person');
   });
 
   it('a code works once, and only with the right PKCE verifier', async () => {

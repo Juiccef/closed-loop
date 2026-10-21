@@ -380,5 +380,110 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
     },
     "title": "Pause check-ins",
   },
+  {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "For a family member asking about the person, for example "How is Mom doing today?". Returns today's check-ins exactly as recorded ("reported by the person", "said later", "no response", "needs human contact"). Read the returned "say" text as is and never describe a check-in as more certain than it was recorded. Read-only; it cannot answer check-ins for the person.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_family_summary",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "maxLength": 10,
+          "type": "string",
+        },
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "waiting",
+                  "open",
+                  "closed",
+                  "alert",
+                  "human",
+                  "acked",
+                  "paused",
+                ],
+                "type": "string",
+              },
+              "label": {
+                "maxLength": 100,
+                "type": "string",
+              },
+              "recorded": {
+                "maxLength": 120,
+                "type": "string",
+              },
+              "window": {
+                "maxLength": 16,
+                "type": "string",
+              },
+            },
+            "required": [
+              "label",
+              "window",
+              "recorded",
+              "kind",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "needsHumanContact": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "open": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "recipientName": {
+          "maxLength": 40,
+          "type": "string",
+        },
+        "reported": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+      },
+      "required": [
+        "date",
+        "recipientName",
+        "items",
+        "reported",
+        "open",
+        "needsHumanContact",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "How today's check-ins went (for family)",
+  },
 ]
 `;

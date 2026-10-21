@@ -5,6 +5,7 @@ import {
   acknowledge,
   deferCheckin,
   getDueCheckins,
+  getFamilySummary,
   getMyStatus,
   ledgerLine,
   pauseCheckins,
@@ -373,6 +374,46 @@ describe('consent, pause, expiry: off means off', () => {
   });
 });
 
+describe('get_family_summary: family hears what was recorded, nothing more', () => {
+  it('reads each check-in in the exact ledger wording, by name, in window order', async () => {
+    const { store } = await demo();
+    setLocal('2026-10-19 08:05');
+    await getDueCheckins(store, H);
+    await recordResponse(store, H, { occurrenceId: MORNING, response: 'done', utterance: 'I think so' });
+    setLocal('2026-10-19 12:10');
+    const s = await getFamilySummary(store, H);
+    expect(s.recipientName).toBe('Margaret');
+    expect(s.items.map((i) => [i.label, i.recorded, i.kind])).toEqual([
+      ["Margaret's morning routine", 'said they would, not sure', 'open'],
+      ["Margaret's lunchtime check", 'not asked yet', 'waiting'],
+      ["Margaret's evening check-in", 'not asked yet', 'waiting'],
+    ]);
+    expect(s.say).toBe(
+      "Here is what Margaret's check-ins recorded today. Margaret's morning routine: said they would, not sure. " +
+        "Margaret's lunchtime check: not asked yet. Margaret's evening check-in: not asked yet. These are Margaret's own answers, recorded as said.",
+    );
+  });
+
+  it('is read-only: asking about the day stores nothing and asks nothing', async () => {
+    const { store } = await demo();
+    setLocal('2026-10-19 08:05');
+    await getFamilySummary(store, H);
+    expect(await store.listOccurrences(H, '2026-10-19')).toHaveLength(0);
+  });
+
+  it('says when a call may help', async () => {
+    const { store } = await demo();
+    setLocal('2026-10-19 08:05');
+    await getDueCheckins(store, H);
+    await recordResponse(store, H, { occurrenceId: MORNING, response: 'needs_help', utterance: 'I want to go home' });
+    const s = await getFamilySummary(store, H);
+    expect(s.needsHumanContact).toBe(1);
+    expect(s.items[0]!.kind).toBe('human');
+    expect(s.say).toContain('needs human contact');
+    expect(s.say).toContain('A call may help.');
+  });
+});
+
 describe('wording rules', () => {
   it('never says "confirmed" or "taken" anywhere the person or family can see', async () => {
     const { store, mailer, tick } = await demo();
@@ -382,6 +423,7 @@ describe('wording rules', () => {
     texts.push((await recordResponse(store, H, { occurrenceId: MORNING, response: 'done', utterance: 'maybe' })).say);
     texts.push((await deferCheckin(store, H, { occurrenceId: MORNING, until: 'in_1_hour' })).say);
     texts.push((await getMyStatus(store, H)).say);
+    texts.push((await getFamilySummary(store, H)).say);
     setLocal('2026-10-20 09:00');
     await tick();
     texts.push(...mailer.sent.flatMap((m) => [m.subject, m.text, m.html]));

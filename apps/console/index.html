@@ -162,7 +162,13 @@
               <h2 id="link-title">Link a voice assistant</h2>
               <p class="desc">When the check-in add-on is enabled in the Alexa app, it asks for a link code. Create one here and type it on the sign-in page. Codes work once and expire after 10 minutes.</p>
             </div>
-            <button class="btn" type="button" id="make-code">Create a link code</button>
+            <div class="row-actions head-actions">
+              <button class="btn" type="button" id="make-code">Code for their Alexa</button>
+              <button class="btn ghost" type="button" id="make-family-code">Code for a family member’s Alexa</button>
+            </div>
+          </div>
+          <div class="container-body roles-note">
+            <p class="help">Their own Alexa asks the check-ins and records their answers. A family member’s Alexa can only hear how the day went, recorded as said; it can never answer for them.</p>
           </div>
           <div class="container-body">
             <p id="link-code-out" class="link-code" role="status" aria-live="polite"></p>

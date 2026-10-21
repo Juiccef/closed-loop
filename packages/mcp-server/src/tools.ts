@@ -5,11 +5,13 @@ import {
   CheckinInputError,
   DEFER_UNTIL,
   LEDGER_STATUSES,
+  LOOP_KINDS,
   NEXT_STEPS,
   PAUSE_SCOPES,
   RESPONSES,
   deferCheckin,
   getDueCheckins,
+  getFamilySummary,
   getMyStatus,
   pauseCheckins,
   recordResponse,
@@ -72,12 +74,30 @@ export const outputs = {
     pausedUntilLocal: z.string().max(16),
     say: spoken,
   }),
+  get_family_summary: z.object({
+    date: z.string().max(10),
+    recipientName: z.string().max(40),
+    items: z.array(
+      z.object({
+        label: z.string().max(100),
+        window: z.string().max(16),
+        recorded: z.string().max(120),
+        kind: z.enum(LOOP_KINDS),
+      }),
+    ),
+    reported: z.number().int(),
+    open: z.number().int(),
+    needsHumanContact: z.number().int(),
+    say: spoken,
+  }),
 } as const;
 
 export type ToolOutputs = { [K in keyof typeof outputs]: z.infer<(typeof outputs)[K]> };
 
 export interface CallerContext {
   householdId: string;
+  /** 'person': the person's own assistant. 'family': a family member's, which may read but never answer. 'any': the demo token. */
+  role: 'person' | 'family' | 'any';
 }
 
 /** What the tools need from the rest of the system. Implementations must touch storage only (no network on the hot path). */
@@ -90,6 +110,7 @@ export interface CheckinBackend {
   deferCheckin(ctx: CallerContext, input: { occurrenceId: string; until: DeferUntil }): Promise<ToolOutputs['defer_checkin']>;
   getMyStatus(ctx: CallerContext): Promise<ToolOutputs['get_my_status']>;
   pauseCheckins(ctx: CallerContext, input: { scope: PauseScope }): Promise<ToolOutputs['pause_checkins']>;
+  getFamilySummary(ctx: CallerContext): Promise<ToolOutputs['get_family_summary']>;
 }
 
 /** The real backend: core check-in logic over a Store (DynamoDB in AWS, memory locally). */
@@ -100,6 +121,7 @@ export function coreBackend(store: Store): CheckinBackend {
     deferCheckin: (ctx, input) => deferCheckin(store, ctx.householdId, input),
     getMyStatus: (ctx) => getMyStatus(store, ctx.householdId),
     pauseCheckins: (ctx, input) => pauseCheckins(store, ctx.householdId, input),
+    getFamilySummary: (ctx) => getFamilySummary(store, ctx.householdId),
   };
 }
 
@@ -110,6 +132,7 @@ const UI_STATUS: Record<string, [invoking: string, invoked: string]> = {
   defer_checkin: ['Moving the check-in', 'Check-in moved'],
   get_my_status: ['Reading today\u2019s summary', 'Summary ready'],
   pause_checkins: ['Pausing check-ins', 'Check-ins paused'],
+  get_family_summary: ['Reading today\u2019s check-ins', 'Today\u2019s check-ins'],
 };
 
 /** Tool definitions reference the card per the MCP Apps extension (SEP-1865). */
@@ -128,7 +151,13 @@ function failure(message: string): CallToolResult {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-async function guarded<T extends { say: string }>(tool: string, fn: () => Promise<T>): Promise<CallToolResult> {
+/** Answers belong to the person. A family member's assistant can read the day but cannot answer, defer, or pause for them. */
+const FAMILY_CANNOT_ANSWER =
+  'Only the person can answer or pause their own check-ins, on their own device. Family can ask how the day went with get_family_summary.';
+const PERSON_TOOLS = new Set(['get_due_checkins', 'record_response', 'defer_checkin', 'pause_checkins']);
+
+async function guarded<T extends { say: string }>(tool: string, fn: () => Promise<T>, ctx?: CallerContext): Promise<CallToolResult> {
+  if (ctx?.role === 'family' && PERSON_TOOLS.has(tool)) return failure(FAMILY_CANNOT_ANSWER);
   try {
     return result(tool, await fn());
   } catch (err) {
@@ -162,7 +191,7 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
       _meta: toolUiMeta,
     },
-    async () => guarded('get_due_checkins', () => backend.getDueCheckins(ctx)),
+    async () => guarded('get_due_checkins', () => backend.getDueCheckins(ctx), ctx),
   );
 
   server.registerTool(
@@ -182,7 +211,7 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
       _meta: toolUiMeta,
     },
-    async (args) => guarded('record_response', () => backend.recordResponse(ctx, args)),
+    async (args) => guarded('record_response', () => backend.recordResponse(ctx, args), ctx),
   );
 
   server.registerTool(
@@ -196,7 +225,7 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       _meta: toolUiMeta,
     },
-    async (args) => guarded('defer_checkin', () => backend.deferCheckin(ctx, args)),
+    async (args) => guarded('defer_checkin', () => backend.deferCheckin(ctx, args), ctx),
   );
 
   server.registerTool(
@@ -224,6 +253,22 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
       _meta: toolUiMeta,
     },
-    async (args) => guarded('pause_checkins', () => backend.pauseCheckins(ctx, args)),
+    async (args) => guarded('pause_checkins', () => backend.pauseCheckins(ctx, args), ctx),
+  );
+
+  server.registerTool(
+    'get_family_summary',
+    {
+      title: "How today's check-ins went (for family)",
+      description:
+        "For a family member asking about the person, for example \"How is Mom doing today?\". Returns today's check-ins exactly as recorded " +
+        '("reported by the person", "said later", "no response", "needs human contact"). Read the returned "say" text as is and never ' +
+        'describe a check-in as more certain than it was recorded. Read-only; it cannot answer check-ins for the person.',
+      inputSchema: {},
+      outputSchema: outputs.get_family_summary.shape,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: toolUiMeta,
+    },
+    async () => guarded('get_family_summary', () => backend.getFamilySummary(ctx)),
   );
 }

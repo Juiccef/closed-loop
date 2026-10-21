@@ -42,4 +42,15 @@ export const stubBackend: CheckinBackend = {
   async pauseCheckins() {
     return { pausedUntilLocal: '2026-10-19 23:59', say: 'Okay, check-ins are paused for today.' };
   },
+  async getFamilySummary() {
+    return {
+      date: '2026-10-19',
+      recipientName: 'Margaret',
+      items: [{ label: "Margaret's morning routine", window: '08:00–11:00', recorded: 'asked, no answer yet', kind: 'open' as const }],
+      reported: 0,
+      open: 1,
+      needsHumanContact: 0,
+      say: "Here is what Margaret's check-ins recorded today. Margaret's morning routine: asked, no answer yet. These are Margaret's own answers, recorded as said.",
+    };
+  },
 };

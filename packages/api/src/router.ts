@@ -450,10 +450,12 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
           // One-time code for linking a voice assistant account (OAuth authorize page). Expires in 10 minutes.
           const h = await store.getHousehold(id);
           if (!h) throw new HttpError(404, 'Household not found.');
+          const body = (await req.json().catch(() => ({}))) as { role?: unknown };
+          const role = body.role === 'family' ? 'family' : 'person';
           const code = generateLinkCode();
           const expiresAt = new Date(Date.now() + LINK_CODE_MINUTES * 60_000);
-          await store.putLinkCode(hashSecret(code), id, expiresAt.toISOString());
-          return json(200, { code, expiresAt: expiresAt.toISOString(), minutes: LINK_CODE_MINUTES });
+          await store.putLinkCode(hashSecret(code), id, expiresAt.toISOString(), role);
+          return json(200, { code, role, expiresAt: expiresAt.toISOString(), minutes: LINK_CODE_MINUTES });
         }
         if (rest === '/links' && req.method === 'GET') {
           return json(200, { links: await store.listRefreshTokens(id) });

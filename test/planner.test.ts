@@ -43,3 +43,25 @@ describe('planner: safety runs first', () => {
     expect(rulesPlanner({ userText: 'Yes, done.', current }).toolCall?.arguments.response).toBe('done');
   });
 });
+
+describe('planner: a family member speaking from their own assistant', () => {
+  it('asking how the day went reads the summary', () => {
+    expect(rulesPlanner({ userText: 'How is Mom doing today?', speaker: 'family' }).toolCall).toEqual({ name: 'get_family_summary', arguments: {} });
+  });
+
+  it('family words are never recorded as the person’s answer, even with a check-in in progress', async () => {
+    for (const userText of ['Yes, she did it.', 'Done.', 'She took care of it']) {
+      const p = rulesPlanner({ userText, speaker: 'family', current, recent: current });
+      expect(p.toolCall, userText).toBeNull();
+      expect(p.reply).toContain('Only the person can answer');
+    }
+    const b = await bedrockOrRulesPlanner({ userText: 'Yes, done', speaker: 'family', current, tools: [{ name: 'record_response' }] });
+    expect(b.toolCall).toBeNull();
+  });
+
+  it('emergency wording from family gets the fixed line, not a needs-help record for the person', () => {
+    const p = rulesPlanner({ userText: 'Mom fell and she is hurt', speaker: 'family', current, recent: current });
+    expect(p.toolCall).toBeNull();
+    expect(p.reply).toBe(CRISIS_REPLY);
+  });
+});

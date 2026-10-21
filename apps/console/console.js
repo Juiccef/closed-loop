@@ -437,16 +437,24 @@ const CLIENT_NAMES = { 'alexa-plus': 'Alexa+ add-on', simulator: 'Simulated clie
 async function renderLinks() {
   const { links } = await api(`/api/households/${H}/links`);
   $('#links-list').innerHTML = links.length
-    ? links.map((l) => `<li>${esc(CLIENT_NAMES[l.clientId] || l.clientId)}, linked ${esc(new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</li>`).join('')
+    ? links
+        .map(
+          (l) =>
+            `<li>${esc(CLIENT_NAMES[l.clientId] || l.clientId)} · ${l.role === 'family' ? 'family member (can hear the day, cannot answer)' : `${esc(state.view?.household.recipientName ?? 'their')}’s own (asks and records)`}, linked ${esc(new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</li>`,
+        )
+        .join('')
     : '<li>Nothing linked yet.</li>';
   $('#unlink').disabled = !links.length;
 }
 
-$('#make-code').addEventListener('click', async () => {
-  const r = await api(`/api/households/${H}/link-code`, { method: 'POST', body: {} });
+async function makeCode(role) {
+  const r = await api(`/api/households/${H}/link-code`, { method: 'POST', body: { role } });
   const until = new Date(r.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  $('#link-code-out').innerHTML = `${esc(r.code)}<small>Works once, until ${esc(until)} (real time).</small>`;
-});
+  const forWhom = role === 'family' ? 'For a family member’s Alexa: hears the day, cannot answer.' : `For ${state.view?.household.recipientName ?? 'their'}’s own Alexa.`;
+  $('#link-code-out').innerHTML = `${esc(r.code)}<small>${esc(forWhom)} Works once, until ${esc(until)} (real time).</small>`;
+}
+$('#make-code').addEventListener('click', () => makeCode('person'));
+$('#make-family-code').addEventListener('click', () => makeCode('family'));
 
 $('#unlink').addEventListener('click', async () => {
   const ok = await confirmDialog({ title: 'Unlink all voice assistant sign-ins?', body: 'New sign-ins stop at once. An existing session ends within an hour. You can link again with a new code.', okLabel: 'Unlink' });

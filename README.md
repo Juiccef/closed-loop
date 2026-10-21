@@ -177,7 +177,7 @@ Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB tab
 
 ```
 packages/core/          state machine, ledger wording, safety rules, lint, clock, stores (pure TS, tested)
-packages/mcp-server/    MCP handler on SDK 1.x, five tools, auth, Origin, OAuth metadata, adapters
+packages/mcp-server/    MCP handler on SDK 1.x, six tools, auth, Origin, OAuth metadata, adapters
 packages/api/           console API, ack links, admin clock, planners, web + Lambda entry
 packages/tick/          tick Lambda, SES and file mailers
 packages/classifier/    DynamoDB Streams second-opinion Lambda

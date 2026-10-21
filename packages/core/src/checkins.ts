@@ -6,7 +6,7 @@ import { parseOccurrenceId, type CheckinDefinition, type HouseholdId, type Occur
 import { loadPlan, materialize, newOccurrence, type PlanContext } from './plan';
 import { CRISIS_REPLY, RESPONSES, SELF_HARM_REPLY, applySafety, type CheckinResponse } from './safety';
 import { ConflictError, clip, type Store } from './store';
-import { LEDGER_WORDING, followUpPrompt, ledgerStatusFor, spoken, statusSentence, type LedgerStatus } from './wording';
+import { LEDGER_WORDING, followUpPrompt, ledgerLine, ledgerStatusFor, spoken, statusSentence, type LedgerStatus } from './wording';
 
 export const DEFER_UNTIL = ['in_30_min', 'in_1_hour', 'after_lunch', 'this_afternoon', 'this_evening'] as const;
 export type DeferUntil = (typeof DEFER_UNTIL)[number];
@@ -53,6 +53,24 @@ export interface StatusResult {
 }
 export interface PauseResult {
   pausedUntilLocal: string;
+  say: string;
+}
+/** How a check-in reads at a glance; the same shapes the console and the card draw. */
+export const LOOP_KINDS = ['waiting', 'open', 'closed', 'alert', 'human', 'acked', 'paused'] as const;
+export type LoopKind = (typeof LOOP_KINDS)[number];
+export interface FamilySummaryItem {
+  label: string;
+  window: string;
+  recorded: string;
+  kind: LoopKind;
+}
+export interface FamilySummaryResult {
+  date: string;
+  recipientName: string;
+  items: FamilySummaryItem[];
+  reported: number;
+  open: number;
+  needsHumanContact: number;
   say: string;
 }
 
@@ -397,6 +415,67 @@ export async function getMyStatus(store: Store, householdId: HouseholdId): Promi
   let say = ctx.status === 'active' || paused ? statusSentence(reported, open, missed, l1.map((c) => c.name)) : spoken.inactive;
   if (paused) say += ` ${inactiveSay(ctx)}`;
   return { date: today, reported, open, sharedWith: l1.map((c) => `${c.name} (${c.relation})`), paused, say };
+}
+
+// ---- get_family_summary (a linked family member asks how the day went) ----
+
+const KIND_BY_STATE: Record<OccurrenceState, LoopKind> = {
+  SCHEDULED: 'waiting',
+  PROMPTED: 'open',
+  DEFERRED: 'open',
+  UNSURE: 'open',
+  DECLINED: 'open',
+  REPORTED_DONE: 'closed',
+  NEEDS_HUMAN: 'human',
+  MISSED: 'alert',
+  ESCALATED_L1: 'alert',
+  ESCALATED_L2: 'alert',
+  ACKNOWLEDGED: 'acked',
+  PAUSED: 'paused',
+};
+
+/** Check-in labels are written to the person ("your morning routine"); read to family, they name the person. */
+function forFamily(label: string, name: string): string {
+  return /^your /i.test(label) ? `${name}'s ${label.slice(5)}` : label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/**
+ * Read-only. Today's ledger in the exact recorded wording, for a family member asking from their own device.
+ * Never adds certainty: a line says what was recorded ("reported by the person", "said later"), nothing more.
+ */
+export async function getFamilySummary(store: Store, householdId: HouseholdId): Promise<FamilySummaryResult> {
+  const ctx = await loadPlan(store, householdId);
+  const name = ctx.plan?.household.recipientName ?? '';
+  if (!ctx.plan) return { date: ctx.today, recipientName: name, items: [], reported: 0, open: 0, needsHumanContact: 0, say: spoken.inactive };
+  const { plan, now, today } = ctx;
+  const tz = plan.household.timezone;
+  const stored = new Map((await store.listOccurrences(householdId, today)).map((o) => [o.id, o]));
+  const contacts = new Map(plan.household.contacts.map((c) => [c.id, c.name]));
+  const all: Occurrence[] = [];
+  for (const def of plan.checkins) {
+    def.windows.forEach((_, idx) => {
+      const virtual = newOccurrence(householdId, def, today, idx, tz, now);
+      all.push(stored.get(virtual.id) ?? virtual);
+    });
+  }
+  all.sort((a, b) => a.windowStart.localeCompare(b.windowStart));
+  const labels = new Map(plan.checkins.map((d) => [d.id, d.label]));
+  const items: FamilySummaryItem[] = all.map((o) => ({
+    label: forFamily(labels.get(o.checkinId) ?? 'a check-in', name),
+    window: `${localTime(new Date(o.windowStart), tz)}–${localTime(new Date(o.windowEnd), tz)}`,
+    recorded: ledgerLine(o, (id) => contacts.get(id)),
+    kind: KIND_BY_STATE[o.state],
+  }));
+  const reported = all.filter((o) => o.state === 'REPORTED_DONE').length;
+  const open = all.filter((o) => ASKABLE.has(o.state) && new Date(o.windowEnd) > now).length;
+  const needsHumanContact = all.filter((o) => o.state === 'NEEDS_HUMAN').length;
+  const parts = [`Here is what ${name}'s check-ins recorded today.`];
+  for (const i of items) parts.push(`${i.label}: ${i.recorded}.`);
+  if (needsHumanContact) parts.push('A call may help.');
+  parts.push(`These are ${name}'s own answers, recorded as said.`);
+  let say = parts.join(' ');
+  if (ctx.status !== 'active') say = `${inactiveSay(ctx)} ${say}`;
+  return { date: today, recipientName: name, items, reported, open, needsHumanContact, say: clip(say, 400) };
 }
 
 // ---- pause_checkins ----

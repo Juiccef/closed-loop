@@ -13,6 +13,8 @@ export interface PlannerRequest {
   history?: Array<{ role: 'user' | 'assistant'; text: string }>;
   /** MCP tools/list result, passed through so an LLM planner can use the real tool schemas. */
   tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+  /** Who is talking: the person (default), or a family member asking from their own assistant. */
+  speaker?: 'person' | 'family';
 }
 
 export interface PlannerResponse {
@@ -29,6 +31,8 @@ const any = (text: string, patterns: RegExp[]) => patterns.some((p) => p.test(te
 
 const PAUSE = [/\bpause\b/, /\bstop (asking|the check ?ins|checking)\b/, /\bleave me alone\b/, /\bno more (questions|check ?ins)\b/, /\bnot today\b.*\bquestions\b/];
 const STATUS = [/\bhow am i doing\b/, /\bmy status\b/, /\bwho (can see|gets|is told|knows)\b/, /\bwhat do you (share|tell)\b/, /\bwhat('?s| is) shared\b/, /\btoday'?s summary\b/];
+const FAMILY_EMERGENCY = [/\bfell\b|\bfallen\b|\bhas had a fall\b/, /\bhurt\b|\binjured\b|\bbleeding\b/, /\bcan'?t breathe\b|\bnot breathing\b/, /\bchest pain\b/, /\bunconscious\b|\bnot (responding|waking)\b/, /\bemergency\b/];
+const FAMILY_ANSWER = [/^(yes|yeah|yep|done)\b/, /\b(she|he|they|mom|mum|dad) (did|has|took|already)\b/, /\bmark (it|that)\b/];
 const DUE = [/\bany check ?ins\b/, /\bwhat do i (need|have) to do\b/, /\bwhat'?s (next|due)\b/, /\bcheck ?in\b.*\bnow\b/];
 
 const DEFER_HINTS: Array<[RegExp, DeferUntil]> = [
@@ -80,8 +84,30 @@ export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
   return null;
 }
 
+/** A family member asks from their own assistant: they can hear what was recorded, never answer for the person. */
+function familyPlan(raw: string): PlannerResponse {
+  const t = normalizeUtterance(raw);
+  if (any(t, FAMILY_ANSWER) && !raw.includes('?')) {
+    return {
+      planner: 'rules',
+      toolCall: null,
+      reply: 'Only the person can answer their own check-ins, on their own device. I can tell you what was recorded today.',
+      rationale: 'family cannot answer for the person',
+    };
+  }
+  return { planner: 'rules', toolCall: { name: 'get_family_summary', arguments: {} }, rationale: 'family asked how the day went' };
+}
+
 export function rulesPlanner(body: unknown): PlannerResponse {
   const req = (body ?? {}) as PlannerRequest;
+  if (req.speaker === 'family') {
+    // Family words are never recorded as the person's answer; emergency wording still gets the fixed line.
+    const raw = String(req.userText ?? '').slice(0, 200);
+    const crisis = safetyPlan({ ...req, current: null, recent: null });
+    if (crisis) return crisis;
+    if (any(normalizeUtterance(raw), FAMILY_EMERGENCY)) return { planner: 'rules', toolCall: null, reply: CRISIS_REPLY, rationale: 'emergency wording from family: fixed reply' };
+    return familyPlan(raw);
+  }
   const safety = safetyPlan(req);
   if (safety) return safety;
   const raw = String(req.userText ?? '').slice(0, 200);

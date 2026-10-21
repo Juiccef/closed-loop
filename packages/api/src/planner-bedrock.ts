@@ -60,6 +60,7 @@ export async function bedrockPlanner(req: PlannerRequest, modelId: string): Prom
 
 export async function bedrockOrRulesPlanner(body: unknown): Promise<PlannerResponse> {
   const req = (body ?? {}) as PlannerRequest;
+  if (req.speaker === 'family') return rulesPlanner(req); // family questions are routed deterministically, never as the person's answer
   const safety = safetyPlan(req); // deterministic safety rules always run before the model
   if (safety) return safety;
   const modelId = process.env.BEDROCK_MODEL_ID;

@@ -24,6 +24,7 @@ import {
   type HouseholdId,
   type LadderConfig,
   type MailLogEntry,
+  type LinkRole,
   type OAuthGrant,
   type Occurrence,
   type Store,
@@ -301,11 +302,12 @@ export class DynamoStore implements Store {
       throw err;
     }
   }
-  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string) {
-    await this.put({ ...keys.linkCode(codeHash), T: 'linkcode', householdId, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string, role: LinkRole = 'person') {
+    await this.put({ ...keys.linkCode(codeHash), T: 'linkcode', householdId, role, expiresAt, ttl: ttlFrom(expiresAt, 1) });
   }
   async consumeLinkCode(codeHash: string, now: Date) {
-    return (await this.consume(keys.linkCode(codeHash), now))?.householdId as HouseholdId | undefined;
+    const item = await this.consume(keys.linkCode(codeHash), now);
+    return item ? { householdId: item.householdId as HouseholdId, role: (item.role === 'family' ? 'family' : 'person') as LinkRole } : undefined;
   }
   async putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string) {
     await this.put({ ...keys.authCode(codeHash), T: 'authcode', grant, expiresAt, ttl: ttlFrom(expiresAt, 1) });
@@ -321,7 +323,10 @@ export class DynamoStore implements Store {
   }
   async listRefreshTokens(householdId: HouseholdId) {
     const items = await this.queryAll(this.prefix(householdId, 'RT#'));
-    return items.map((i) => ({ clientId: String((i.grant as OAuthGrant).clientId), createdAt: String((i.grant as OAuthGrant).createdAt), expiresAt: String(i.expiresAt) }));
+    return items.map((i) => {
+      const g = i.grant as OAuthGrant;
+      return { clientId: String(g.clientId), role: (g.role === 'family' ? 'family' : 'person') as LinkRole, createdAt: String(g.createdAt), expiresAt: String(i.expiresAt) };
+    });
   }
   async deleteRefreshTokens(householdId: HouseholdId) {
     const items = await this.queryAll({ ...this.prefix(householdId, 'RT#'), ProjectionExpression: 'PK, SK' });

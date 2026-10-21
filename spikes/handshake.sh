@@ -40,7 +40,7 @@ post '{"jsonrpc":"2.0","id":3,"method":"tools/list"}' -H 'mcp-protocol-version: 
 post '{"jsonrpc":"2.0","id":3,"method":"tools/list"}' -H 'mcp-protocol-version: 2025-03-26' >/dev/null; cp /tmp/cl_body /tmp/cl_list2
 cmp -s /tmp/cl_list1 /tmp/cl_list2; check "tools/list byte-identical across calls and versions" $?
 names=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/cl_list1','utf8')).result.tools.map(t=>t.name).join(','))")
-[ "$names" = "get_due_checkins,record_response,defer_checkin,get_my_status,pause_checkins" ]; check "tools/list returns the five tools in order ($names)" $?
+[ "$names" = "get_due_checkins,record_response,defer_checkin,get_my_status,pause_checkins,get_family_summary" ]; check "tools/list returns the six tools in order ($names)" $?
 
 post '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_due_checkins","arguments":{}}}' -H 'mcp-protocol-version: 2025-11-25' >/dev/null
 node -e "const r=JSON.parse(require('fs').readFileSync('/tmp/cl_body','utf8')).result; process.exit(r.structuredContent && r.content[0].type==='text' && r.content[0].text.length>0 ? 0 : 1)"

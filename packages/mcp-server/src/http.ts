@@ -209,7 +209,7 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
 
     // A fresh server and transport per request: stateless mode, no Mcp-Session-Id, no request-id collisions.
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
-    registerTools(server, backend, { householdId: access.householdId ?? '' });
+    registerTools(server, backend, { householdId: access.householdId ?? '', role: access.kind === 'user' ? (access.role ?? 'person') : 'any' });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

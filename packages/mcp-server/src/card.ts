@@ -38,8 +38,10 @@ export const CARD_HTML = `<!doctype html>
   .sub:empty { display: none; }
   ul { list-style: none; margin: 8px 0 0; padding: 0; grid-column: 1 / -1; border-top: 1px solid var(--sep); }
   li { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--sep); font-size: 14px; }
-  li span { display: block; }
-  li span::first-letter { text-transform: uppercase; }
+  li > span { display: block; }
+  li > span::first-letter, li .rec::first-letter { text-transform: uppercase; }
+  li .lbl { display: block; font-weight: 600; }
+  li .rec { display: block; font-size: 13px; color: var(--text2); }
   li svg { width: 18px; height: 18px; flex: none; }
   .foot { grid-column: 1 / -1; margin-top: 8px; font-size: 11px; color: var(--text2); }
 </style>
@@ -65,9 +67,11 @@ export const CARD_HTML = `<!doctype html>
   function $(id) { return document.getElementById(id); }
   function text(id, v) { $(id).textContent = v || ''; }
   function mini(kind) {
-    var dash = kind === 'closed' ? '100 0' : kind === 'paused' ? '2 6' : '70 100';
-    var color = kind === 'closed' ? 'var(--green)' : kind === 'human' ? 'var(--red)' : 'var(--blue)';
-    return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="' + dash + '" transform="rotate(-90 12 12)"/></svg>';
+    var full = kind === 'closed' || kind === 'human' || kind === 'acked';
+    var dash = full ? '100 0' : kind === 'paused' ? '0.5 6' : kind === 'waiting' ? '2 7' : kind === 'alert' ? '40 100' : '62 100';
+    var color = kind === 'closed' ? 'var(--green)' : kind === 'human' ? 'var(--red)' : kind === 'alert' ? 'var(--amber)' : kind === 'open' ? 'var(--blue)' : 'var(--grey)';
+    var dot = kind === 'closed' || kind === 'acked' ? '<circle cx="12" cy="12" r="3.4" fill="' + color + '"/>' : '';
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="' + dash + '" transform="rotate(-90 12 12)"/>' + dot + '</svg>';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function setKind(kind) { requestAnimationFrame(function () { $('ring').setAttribute('data-kind', kind); }); }
@@ -77,7 +81,16 @@ export const CARD_HTML = `<!doctype html>
     var sc = (result && result.structuredContent) || {};
     var list = $('list');
     list.hidden = true;
-    if (sc.checkins) {
+    if (sc.items) {
+      var bits = [sc.reported + ' reported', sc.open + ' open'];
+      if (sc.needsHumanContact) bits.push(sc.needsHumanContact + ' needs a call');
+      text('title', (sc.recipientName ? sc.recipientName + '\u2019s' : 'Today\u2019s') + ' check-ins today');
+      text('kicker', bits.join(' \u00b7 '));
+      text('sub', 'Recorded as said. Nobody checked.');
+      list.innerHTML = sc.items.map(function (i) { return '<li>' + mini(i.kind) + '<span><span class="lbl">' + esc(i.label) + '</span><span class="rec">' + esc(i.recorded) + '</span></span></li>'; }).join('');
+      list.hidden = !sc.items.length;
+      setKind(sc.needsHumanContact ? 'human' : sc.open ? 'open' : 'closed');
+    } else if (sc.checkins) {
       text('kicker', sc.checkins.length ? 'Open check-ins' : 'Check-ins');
       text('title', sc.checkins.length ? sc.checkins.length + (sc.checkins.length === 1 ? ' loop open' : ' loops open') : (sc.paused ? 'Paused' : 'Nothing due right now'));
       text('sub', sc.checkins.length ? 'Asked one at a time, in the family\\u2019s own words.' : '');

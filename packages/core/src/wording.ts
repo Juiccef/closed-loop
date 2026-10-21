@@ -103,7 +103,6 @@ export const spoken = {
   noneDue: 'There are no check-ins right now.',
   paused: (until: Date, tz: string) => `Check-ins are paused until ${spokenTime(until, tz)}.`,
   inactive: 'Check-ins are turned off right now.',
-  followUp: (prompt: string) => `Just checking again. ${prompt}`,
   done: "Thank you. I've noted that it's done.",
   unsure: "Okay. I've noted that you're not sure. I'll check again later.",
   later: (at: Date, tz: string) => `Okay. I'll ask again around ${spokenTime(at, tz)}.`,
@@ -115,6 +114,11 @@ export const spoken = {
   pausedToday: "Okay. Check-ins are paused for the rest of today.",
   paused24h: "Okay. Check-ins are paused for the next 24 hours.",
 };
+
+/** Follow-ups avoid re-reading time-of-day greetings ("Good morning") hours later. */
+export function followUpPrompt(def: CheckinDefinition): string {
+  return def.kind === 'wellbeing' ? `Just checking again. ${def.prompt}` : `Just checking again about ${def.label}. Is that done now?`;
+}
 
 export function statusSentence(reported: number, open: number, missed: number, l1Names: string[]): string {
   const parts = [`Today: ${reported} reported, ${open} still open`];

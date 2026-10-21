@@ -1,8 +1,1 @@
-{
-  "name": "@closed-loop/tick",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts"
-}
+{"name":"@closed-loop/tick","private":true,"version":"0.1.0","type":"module","main":"src/index.ts","types":"src/index.ts"}

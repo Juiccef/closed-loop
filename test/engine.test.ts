@@ -49,7 +49,7 @@ describe('asking: get_due_checkins', () => {
     setLocal('2026-10-19 09:00');
     const again = await getDueCheckins(store, H);
     expect(again.checkins[0]?.isFollowUp).toBe(true);
-    expect(again.say).toMatch(/^Just checking again\./);
+    expect(again.say).toBe('Just checking again about your morning routine. Is that done now?');
     setLocal('2026-10-19 10:00');
     expect((await getDueCheckins(store, H)).checkins).toHaveLength(1);
     setLocal('2026-10-19 11:00');

@@ -6,3 +6,4 @@ out/
 *.log
 .DS_Store
 samconfig.toml
+packages/api/src/static.generated.ts

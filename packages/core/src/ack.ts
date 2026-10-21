@@ -32,3 +32,11 @@ export function verifyAck(secret: string, token: string, nowSeconds: number): Ac
     return undefined;
   }
 }
+
+const ACK_TTL_DAYS = 7;
+
+/** Builds signed acknowledge URLs that expire after 7 days of real time. */
+export function ackUrlBuilder(baseUrl: string, secret: string) {
+  return (householdId: string, occurrenceId: string, contactId: string) =>
+    `${baseUrl.replace(/\/$/, '')}/ack?t=${signAck(secret, { householdId, occurrenceId, contactId, exp: Math.floor(Date.now() / 1000) + ACK_TTL_DAYS * 86_400 })}`;
+}

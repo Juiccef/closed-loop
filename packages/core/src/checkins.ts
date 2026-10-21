@@ -6,7 +6,7 @@ import { parseOccurrenceId, type CheckinDefinition, type HouseholdId, type Occur
 import { loadPlan, materialize, newOccurrence, type PlanContext } from './plan';
 import { CRISIS_REPLY, RESPONSES, SELF_HARM_REPLY, applySafety, type CheckinResponse } from './safety';
 import { ConflictError, clip, type Store } from './store';
-import { LEDGER_WORDING, ledgerStatusFor, spoken, statusSentence, type LedgerStatus } from './wording';
+import { LEDGER_WORDING, followUpPrompt, ledgerStatusFor, spoken, statusSentence, type LedgerStatus } from './wording';
 
 export const DEFER_UNTIL = ['in_30_min', 'in_1_hour', 'after_lunch', 'this_afternoon', 'this_evening'] as const;
 export type DeferUntil = (typeof DEFER_UNTIL)[number];
@@ -157,12 +157,18 @@ export async function getDueCheckins(store: Store, householdId: HouseholdId): Pr
         occurrenceId: o.id,
         detail: kind === 'first' ? `Asked about ${def.label}.` : `Asked again about ${def.label} (follow-up ${written.reasks} of ${def.maxReasks}).`,
       });
-      return { occurrenceId: o.id, label: def.label, prompt: def.prompt, allowedResponses: [...RESPONSES], isFollowUp: kind === 'followup' };
+      return {
+        occurrenceId: o.id,
+        label: def.label,
+        prompt: kind === 'followup' ? followUpPrompt(def) : def.prompt,
+        allowedResponses: [...RESPONSES],
+        isFollowUp: kind === 'followup',
+      };
     }),
   );
   const checkins = served.filter((x): x is DueCheckin => !!x);
   const first = checkins[0];
-  const say = !first ? spoken.noneDue : first.isFollowUp ? spoken.followUp(first.prompt) : first.prompt;
+  const say = first ? first.prompt : spoken.noneDue;
   return { checkins, paused: false, say };
 }
 

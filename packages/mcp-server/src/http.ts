@@ -12,6 +12,8 @@ export interface McpHttpConfig {
   bearerTokens: Record<string, string>;
   /** Browser origins allowed to call the endpoint. Requests with no Origin header are allowed (server-to-server). */
   allowedOrigins: string[];
+  /** Also allow pages served from this endpoint's own origin (console and simulator on the same URL). */
+  allowSameOrigin?: boolean;
   /** Canonical URI of the MCP endpoint, advertised in Protected Resource Metadata. Derived from the request when empty. */
   resourceUrl: string;
   /**
@@ -25,8 +27,12 @@ export interface McpHttpConfig {
 
 const CORS_ALLOW_HEADERS = 'content-type, authorization, accept, mcp-protocol-version, mcp-session-id, last-event-id';
 
-function corsHeaders(origin: string | null, config: McpHttpConfig): Record<string, string> {
-  if (!origin || !config.allowedOrigins.includes(origin)) return {};
+function originAllowed(reqOrigin: string, url: URL, config: McpHttpConfig): boolean {
+  return config.allowedOrigins.includes(reqOrigin) || (!!config.allowSameOrigin && reqOrigin === `${url.protocol}//${url.host}`);
+}
+
+function corsHeaders(origin: string | null, url: URL, config: McpHttpConfig): Record<string, string> {
+  if (!origin || !originAllowed(origin, url, config)) return {};
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'POST, GET, OPTIONS',
@@ -114,9 +120,9 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
     const url = new URL(req.url);
     const path = url.pathname.startsWith(base) ? url.pathname.slice(base.length) || '/' : url.pathname;
     const reqOrigin = req.headers.get('origin');
-    const cors = corsHeaders(reqOrigin, config);
+    const cors = corsHeaders(reqOrigin, url, config);
 
-    if (reqOrigin && !config.allowedOrigins.includes(reqOrigin)) {
+    if (reqOrigin && !originAllowed(reqOrigin, url, config)) {
       return json(403, { jsonrpc: '2.0', error: { code: -32000, message: 'Forbidden: origin not allowed' }, id: null });
     }
 

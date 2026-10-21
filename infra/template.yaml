@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Closed Loop: daily check-ins that close the loop. Self-hosted MCP server (Streamable HTTP) for an
+  Alexa+ add-on, caregiver console, simulated Alexa+ client. Reminders and check-ins only; not an
+  emergency alert system.
+
+Parameters:
+  AdminToken:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Access code for the console, simulator, and demo admin endpoints.
+  McpBearerToken:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Static bearer token for MCP clients (stand-in for OAuth 2.1, which is out of scope).
+  AckLinkSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: HMAC secret for signed acknowledge links.
+  SesSender:
+    Type: String
+    Description: Verified SES identity used as the From address.
+  SeedL1Email:
+    Type: String
+    Description: Demo first contact (must be verified while SES is in the sandbox).
+  SeedL2Email:
+    Type: String
+    Description: Demo second contact (must be verified while SES is in the sandbox).
+  BedrockModelId:
+    Type: String
+    Default: ''
+    Description: Bedrock model or inference profile for the planner. Empty means the rules planner.
+
+Conditions:
+  HasBedrock: !Not [!Equals [!Ref BedrockModelId, '']]
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    Handler: index.lambdaHandler
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref Table
+        SES_SENDER: !Ref SesSender
+        ACK_LINK_SECRET: !Ref AckLinkSecret
+        NODE_OPTIONS: --enable-source-maps
+
+Resources:
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      TimeToLiveSpecification: { AttributeName: ttl, Enabled: true }
+      StreamSpecification: { StreamViewType: NEW_IMAGE }
+      SSESpecification: { SSEEnabled: true }
+
+  # MCP endpoint, console API, acknowledge links, and static pages on one Function URL.
+  WebFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: MCP server (/mcp), caregiver console API, ack links, static pages
+      CodeUri: ../dist/web/
+      MemorySize: 2048
+      Timeout: 15
+      Environment:
+        Variables:
+          ADMIN_TOKEN: !Ref AdminToken
+          MCP_BEARER_TOKEN: !Ref McpBearerToken
+          SEED_L1_EMAIL: !Ref SeedL1Email
+          SEED_L2_EMAIL: !Ref SeedL2Email
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref Table }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+        - !If
+          - HasBedrock
+          - Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:*::foundation-model/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+          - !Ref AWS::NoValue
+      FunctionUrlConfig:
+        AuthType: NONE
+      Events:
+        KeepWarm:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub ${AWS::StackName}-keep-warm
+            Description: Keeps one instance warm so MCP calls stay under 500 ms (no provisioned concurrency on new accounts)
+            ScheduleExpression: rate(5 minutes)
+            Input: '{"source":"closed-loop.keep-warm"}'
+            RetryPolicy: { MaximumRetryAttempts: 0 }
+
+  # Closes check-in windows and emails family. Cannot speak to the person.
+  TickFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Every minute - close windows, run the escalation ladder, send SES email
+      CodeUri: ../dist/tick/
+      MemorySize: 1024
+      Timeout: 50
+      Environment:
+        Variables:
+          WEB_URL: !GetAtt WebFunctionUrl.FunctionUrl
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref Table }
+        - Statement:
+            - Effect: Allow
+              Action: ses:SendEmail
+              Resource: !Sub arn:aws:ses:${AWS::Region}:${AWS::AccountId}:identity/*
+      Events:
+        Tick:
+          Type: ScheduleV2
+          Properties:
+            Name: !Sub ${AWS::StackName}-tick
+            Description: Closed Loop tick (window close, ladder, email)
+            ScheduleExpression: rate(1 minute)
+            RetryPolicy: { MaximumRetryAttempts: 0 }
+
+  WebLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${WebFunction}
+      RetentionInDays: 7
+  TickLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TickFunction}
+      RetentionInDays: 7
+
+Outputs:
+  WebUrl:
+    Description: Simulator at /simulator/, console at /console/, MCP at /mcp
+    Value: !GetAtt WebFunctionUrl.FunctionUrl
+  McpUrl:
+    Value: !Sub '${WebFunctionUrl.FunctionUrl}mcp'
+  TableName:
+    Value: !Ref Table
+  WebFunctionName:
+    Value: !Ref WebFunction
+  TickFunctionName:
+    Value: !Ref TickFunction

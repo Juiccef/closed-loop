@@ -1,6 +1,6 @@
 # Devpost submission text (copy and paste)
 
-Fill in the placeholders before submitting: `<VIDEO_URL>`, `<REPO_URL>`, `<OSS_REPO_URL>`, and `<GITHUB_USERNAME>`.
+Fill in the video link (`<VIDEO_URL>`) before submitting.
 
 ---
 
@@ -73,7 +73,7 @@ TypeScript, Node.js, Model Context Protocol (TypeScript SDK 1.x, MCP Apps), AWS 
 
 ## Links
 
-- Repository: `<REPO_URL>` (MIT license)
+- Repository: https://github.com/Juiccef/closed-loop (MIT license)
 - Demo video: `<VIDEO_URL>`
 
 ## Product feedback (required: every tool used)
@@ -96,9 +96,9 @@ Full per-tool answers (what it was used for, what worked, what needs work, onboa
 
 ## Open Source mini challenge
 
-- **Contribution URL:** `<OSS_REPO_URL>`
-- **Repository URL:** `<OSS_REPO_URL>`
-- **GitHub username:** `<GITHUB_USERNAME>`
+- **Contribution URL:** https://github.com/Juiccef/mcp-handshake-check
+- **Repository URL:** https://github.com/Juiccef/mcp-handshake-check
+- **GitHub username:** Juiccef
 - **What I did:** Created `mcp-handshake-check`, a new MIT-licensed, zero-dependency CLI and library, during the hackathon window.
 - **How it works:** Point it at any MCP endpoint. It initializes with both `2025-03-26` and `2025-11-25`, checks statelessness, JSON-only `Accept` tolerance, notification status, ping, tools/list stability across calls and versions, tool schema hygiene (object inputs, bounded strings, output schemas), an optional `tools/call` for `structuredContent` plus text, Origin rejection, 401 behavior, RFC 9728 and authorization-server metadata (S256, client_credentials), GET handling, and round-trip latency against a 500 ms budget. It prints PASS/WARN/FAIL with plain explanations, or JSON for CI, and exits non-zero on failure. Tests run against two in-process mock servers; CI runs on Node 20, 22, and 24.
 - **Why it matters:** Each check is a real problem I hit while building an Alexa+ MCP add-on: conflicting version examples, an SDK that rejects JSON-only clients, and auth guidance that differs between the spec and a client. Anyone deploying an MCP server behind a strict client can catch these in one command instead of discovering them in production.

@@ -183,6 +183,10 @@ test/                   unit, protocol, and contract tests
 docs/                   architecture, demo script, accessibility
 ```
 
+## Related
+
+[mcp-handshake-check](https://github.com/Juiccef/mcp-handshake-check): the zero-dependency checker built alongside this project, which runs the same wire-level checks against any stateless Streamable HTTP MCP server.
+
 ## License
 
 [MIT](LICENSE)

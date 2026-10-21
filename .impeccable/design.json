@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T20:20:32.313990+00:00",
+  "title": "Design System: Closed Loop",
+  "extensions": {
+    "colorMeta": {
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "oklch(55.4% 0.171 254)",
+        "tonalRamp": [
+          "oklch(15% 0.171 254)",
+          "oklch(25% 0.171 254)",
+          "oklch(35% 0.171 254)",
+          "oklch(45% 0.171 254)",
+          "oklch(55% 0.171 254)",
+          "oklch(65% 0.171 254)",
+          "oklch(80% 0.171 254)",
+          "oklch(95% 0.171 254)"
+        ]
+      },
+      "reported-green": {
+        "role": "status",
+        "displayName": "Reported Green",
+        "canonical": "oklch(51.8% 0.172 143)",
+        "tonalRamp": [
+          "oklch(15% 0.172 143)",
+          "oklch(25% 0.172 143)",
+          "oklch(35% 0.172 143)",
+          "oklch(45% 0.172 143)",
+          "oklch(55% 0.172 143)",
+          "oklch(65% 0.172 143)",
+          "oklch(80% 0.172 143)",
+          "oklch(95% 0.172 143)"
+        ]
+      },
+      "past-window-amber": {
+        "role": "status",
+        "displayName": "Past-window Amber",
+        "canonical": "oklch(53.6% 0.109 82)",
+        "tonalRamp": [
+          "oklch(15% 0.109 82)",
+          "oklch(25% 0.109 82)",
+          "oklch(35% 0.109 82)",
+          "oklch(45% 0.109 82)",
+          "oklch(55% 0.109 82)",
+          "oklch(65% 0.109 82)",
+          "oklch(80% 0.109 82)",
+          "oklch(95% 0.109 82)"
+        ]
+      },
+      "human-red": {
+        "role": "status",
+        "displayName": "Human Red",
+        "canonical": "oklch(54.8% 0.212 28)",
+        "tonalRamp": [
+          "oklch(15% 0.2 28)",
+          "oklch(25% 0.2 28)",
+          "oklch(35% 0.2 28)",
+          "oklch(45% 0.2 28)",
+          "oklch(55% 0.2 28)",
+          "oklch(65% 0.2 28)",
+          "oklch(80% 0.2 28)",
+          "oklch(95% 0.2 28)"
+        ]
+      },
+      "slate-secondary": {
+        "role": "neutral",
+        "displayName": "Slate Secondary",
+        "canonical": "oklch(50.3% 0.026 257)",
+        "tonalRamp": [
+          "oklch(15% 0.026 257)",
+          "oklch(25% 0.026 257)",
+          "oklch(35% 0.026 257)",
+          "oklch(45% 0.026 257)",
+          "oklch(55% 0.026 257)",
+          "oklch(65% 0.026 257)",
+          "oklch(80% 0.026 257)",
+          "oklch(95% 0.026 257)"
+        ]
+      },
+      "grouped-ground": {
+        "role": "neutral",
+        "displayName": "Grouped Ground",
+        "canonical": "oklch(96.4% 0.003 265)",
+        "tonalRamp": [
+          "oklch(15% 0.003 265)",
+          "oklch(25% 0.003 265)",
+          "oklch(35% 0.003 265)",
+          "oklch(45% 0.003 265)",
+          "oklch(55% 0.003 265)",
+          "oklch(65% 0.003 265)",
+          "oklch(80% 0.003 265)",
+          "oklch(95% 0.003 265)"
+        ]
+      },
+      "console-night": {
+        "role": "neutral",
+        "displayName": "Console Night",
+        "canonical": "oklch(18.9% 0.015 253)",
+        "tonalRamp": [
+          "oklch(15% 0.015 253)",
+          "oklch(25% 0.015 253)",
+          "oklch(35% 0.015 253)",
+          "oklch(45% 0.015 253)",
+          "oklch(55% 0.015 253)",
+          "oklch(65% 0.015 253)",
+          "oklch(80% 0.015 253)",
+          "oklch(95% 0.015 253)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "large-title": {
+        "displayName": "Large Title",
+        "purpose": "One per page: the person's name."
+      },
+      "container-title": {
+        "displayName": "Container Title",
+        "purpose": "Each container heading."
+      },
+      "row-title": {
+        "displayName": "Row Title",
+        "purpose": "Check-in labels in lists."
+      },
+      "protocol": {
+        "displayName": "Protocol",
+        "purpose": "JSON-RPC traffic, endpoint paths, link codes."
+      }
+    },
+    "shadows": [
+      {
+        "name": "container",
+        "value": "0 1px 2px rgba(15,20,26,0.05), 0 2px 12px -2px rgba(15,20,26,0.08)",
+        "purpose": "Every container; replaced by a 1px #2a2f36 border in dark mode."
+      },
+      {
+        "name": "high",
+        "value": "0 4px 12px rgba(15,20,26,0.12), 0 16px 48px -8px rgba(15,20,26,0.22)",
+        "purpose": "Dialogs, toasts, hovered landing doors."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "150ms ease",
+        "purpose": "Hover and colour state changes."
+      },
+      {
+        "name": "ring-close",
+        "value": "0.8s cubic-bezier(0.3, 0, 0.1, 1)",
+        "purpose": "A loop's ring sweeping shut when it closes; the only authored motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "760px"
+      },
+      {
+        "name": "side-nav-collapse",
+        "value": "1000px"
+      },
+      {
+        "name": "simulator-two-column",
+        "value": "1180px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action in a container.",
+      "html": "<button class=\"ds-btn\">Save check-in</button>",
+      "css": ".ds-btn{font:700 15px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:38px;padding:7px 18px;border-radius:999px;border:2px solid #0972d3;background:#0972d3;color:#fff;cursor:pointer;transition:background-color .15s}.ds-btn:hover{background:#065bb0;border-color:#065bb0}.ds-btn:focus-visible{outline:2px solid #0972d3;outline-offset:2px}"
+    },
+    {
+      "name": "Normal Button",
+      "kind": "button",
+      "refersTo": "button-normal",
+      "description": "Secondary actions.",
+      "html": "<button class=\"ds-btn-normal\">Add a check-in</button>",
+      "css": ".ds-btn-normal{font:700 15px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:38px;padding:7px 18px;border-radius:999px;border:2px solid #0972d3;background:#fff;color:#0972d3;cursor:pointer}.ds-btn-normal:hover{background:#eaf3fc;color:#065bb0}.ds-btn-normal:focus-visible{outline:2px solid #0972d3;outline-offset:2px}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "All single-line fields.",
+      "html": "<input class=\"ds-input\" value=\"your morning routine\">",
+      "css": ".ds-input{font:16px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:40px;padding:7px 12px;border:1px solid #8c939d;border-radius:8px;background:#fff;color:#0f141a}.ds-input:hover{border-color:#5b6573}.ds-input:focus{border-color:#0972d3;outline:2px solid #0972d3;outline-offset:2px}"
+    },
+    {
+      "name": "Status Indicator",
+      "kind": "chip",
+      "refersTo": "status",
+      "description": "Icon plus label, coloured by meaning.",
+      "html": "<span class=\"ds-status\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"8\" cy=\"8\" r=\"6.6\"/><path d=\"m5 8.2 2 2 4-4.2\"/></svg>Active</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:6px;font:600 16px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#037f0c}"
+    },
+    {
+      "name": "Ledger Row",
+      "kind": "custom",
+      "refersTo": "ledger-row",
+      "description": "The loop ring, the check-in label, and the recorded wording in its status colour.",
+      "html": "<div class=\"ds-row\"><svg class=\"ds-ring\" viewBox=\"0 0 32 32\"><circle cx=\"16\" cy=\"16\" r=\"12\" fill=\"none\" stroke=\"#037f0c\" stroke-width=\"3.4\"/><circle cx=\"16\" cy=\"16\" r=\"4.5\" fill=\"#037f0c\"/></svg><div><div class=\"ds-t\">Your morning routine</div><div class=\"ds-s\">Reported by the person</div><div class=\"ds-f\">Window 08:00–14:00 · Asked 08:05 · Answered 08:06</div></div></div>",
+      "css": ".ds-row{display:flex;gap:16px;align-items:flex-start;padding:16px 24px;background:#fff;border-bottom:1px solid #e3e6ea;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}.ds-ring{width:28px;height:28px;flex:none}.ds-t{font-weight:600;font-size:17px;color:#0f141a}.ds-s{font-weight:600;font-size:17px;color:#037f0c}.ds-f{font-size:14px;color:#5b6573;margin-top:4px}"
+    },
+    {
+      "name": "Top Navigation",
+      "kind": "nav",
+      "refersTo": "top-navigation",
+      "description": "Dark product bar with the ring mark.",
+      "html": "<nav class=\"ds-nav\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 40 40\"><circle cx=\"20\" cy=\"20\" r=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"5\" stroke-linecap=\"round\" pathLength=\"100\" stroke-dasharray=\"80 100\" transform=\"rotate(-90 20 20)\"/></svg>Closed Loop</span><a class=\"ds-nav-link\" href=\"#\">Simulated client</a></nav>",
+      "css": ".ds-nav{display:flex;align-items:center;justify-content:space-between;height:56px;padding:0 20px;background:#0f141a;color:#f2f3f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}.ds-brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:17px}.ds-nav-link{color:#f2f3f5;font-weight:600;font-size:15px;text-decoration:none;padding:8px 14px;border-radius:999px}.ds-nav-link:hover{background:#232b36}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Honest Status Console",
+    "overview": "Closed Loop looks like a product from a large, careful platform team: Amazon's product-UI conventions with Apple's polish. The caregiver opens it worried and short on time; the interface answers what happened today in one line and never sounds more certain than the person did. Every check-in's state is drawn as the loop ring, the product's mark, always paired with the exact recorded words.",
+    "keyCharacteristics": [
+      "Grouped grey ground, white containers, one dark navigation bar.",
+      "One action colour (blue) for primary actions, links, selection, and open loops.",
+      "Status colours appear only where they carry meaning, and always with words.",
+      "System type throughout; monospace only for protocol traffic and link codes.",
+      "Dense where the job is reading (traffic, activity), generous where the job is deciding (ledger, consent)."
+    ],
+    "rules": [
+      {
+        "name": "The Words-First Rule",
+        "body": "No status is shown by colour alone. Every ring sits beside its recorded wording; every status indicator has an icon shape and a label.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Blue Rule",
+        "body": "Blue means \"you can act\" or \"still open\". It never decorates.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sentence-Case Rule",
+        "body": "Stored wording is lowercase; the UI capitalises only the first letter with ::first-letter, so the recorded words are never rewritten.",
+        "section": "typography"
+      },
+      {
+        "name": "The Ring-Closes Rule",
+        "body": "The only authored motion: when a loop's state changes to closed, its ring sweeps shut and the dot lands.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do pair every ring and colour with the exact recorded wording.",
+      "Do keep blue for actions and open loops only.",
+      "Do keep the three required labels visible on every relevant surface: simulated client, not an emergency alert system, who starts conversations.",
+      "Do keep text on tinted fills at Action Blue Hover or darker so it holds 4.5:1.",
+      "Do use system type and size/weight steps for hierarchy."
+    ],
+    "donts": [
+      "Don't use Amazon or Alexa logos, device skins, or the Amazon orange.",
+      "Don't add kickers or eyebrows above headings; the date and context go beneath the title.",
+      "Don't use coloured side stripes on rows or alerts; status lives in the ring and the words.",
+      "Don't draw icons with Unicode glyphs or emoji; use the masked SVG set or inline SVG.",
+      "Don't return to the warm paper, serif, and terracotta look this system replaced.",
+      "Don't write \"confirmed\" or \"taken\" anywhere in the interface."
+    ]
+  }
+}

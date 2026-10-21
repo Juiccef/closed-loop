@@ -143,20 +143,31 @@ export function createOAuth(cfg: OAuthConfig, store: Store) {
     return new Response(
       `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>
 <style>
-:root{--paper:#f5efe3;--card:#fffaf0;--ink:#1f2a2c;--ink2:#4a5557;--rule:#d8ccb4;--terra:#b2441f;--focus:#0b57d0}
-@media (prefers-color-scheme:dark){:root{--paper:#12191a;--card:#1e2829;--ink:#efe8da;--ink2:#b9b2a4;--rule:#34403f;--terra:#f08a66;--focus:#8ab4ff}}
-body{margin:0;font:18px/1.5 "Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;background:var(--paper);color:var(--ink)}
-main{max-width:34rem;margin:2.5rem auto;padding:0 1rem}
-.card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:1.4rem 1.5rem}
-h1{font-family:Georgia,serif;font-size:1.7rem;margin:0 0 .5rem}
-ul{padding-left:1.2rem}label{display:block;font-weight:700;margin:1rem 0 .3rem}
-input{font:inherit;font-size:1.3rem;letter-spacing:.12em;text-transform:uppercase;width:100%;box-sizing:border-box;padding:.55rem .75rem;border:2px solid var(--rule);border-radius:10px;background:var(--paper);color:var(--ink)}
-.row{display:flex;gap:.6rem;margin-top:1.1rem;flex-wrap:wrap}
-button{font:inherit;font-weight:700;padding:.6rem 1.2rem;border-radius:999px;border:2px solid var(--ink);background:var(--ink);color:var(--paper);min-height:44px;cursor:pointer}
-button.ghost{background:transparent;color:var(--ink)}
-:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
-.err{color:var(--terra);font-weight:700}.note{font-size:.9rem;color:var(--ink2)}
-</style></head><body><main><div class="card">${body}</div><p class="note">Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency.</p></main></body></html>`,
+:root{--bg:#f2f3f5;--surface:#fff;--fill:#eceef1;--text:#0f141a;--text2:#5b6573;--sep:#e3e6ea;--control:#8c939d;--blue:#0972d3;--blue-h:#065bb0;--on-blue:#fff;--red:#d01a1a;--focus:#0972d3;--shadow:0 1px 2px rgba(15,20,26,.05),0 2px 12px -2px rgba(15,20,26,.08);color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1013;--surface:#1a1d22;--fill:#2a2f36;--text:#f2f3f5;--text2:#a9b2be;--sep:#2e333b;--control:#6f7884;--blue:#5aa7f0;--blue-h:#7ab8f3;--on-blue:#0f141a;--red:#ff7a7a;--focus:#7ab8f3;--shadow:0 0 0 1px #2a2f36;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased}
+main{max-width:28rem;margin:3.5rem auto;padding:0 1rem}
+.brand{display:flex;align-items:center;justify-content:center;gap:.5rem;font-weight:700;font-size:17px;margin:0 0 1.25rem}
+.brand svg{width:26px;height:26px}.brand circle{fill:none;stroke:var(--blue);stroke-width:5;stroke-linecap:round;stroke-dasharray:80 100}
+.card{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);padding:1.75rem 1.75rem 1.5rem}
+h1{font-size:1.5rem;line-height:1.2;letter-spacing:-.015em;margin:0 0 .5rem;text-align:center}
+h1+p{text-align:center;color:var(--text2);margin:0 0 1.25rem}
+ul{list-style:none;margin:0 0 1.25rem;padding:0;border:1px solid var(--sep);border-radius:12px}
+li{padding:.6rem .9rem;font-size:15px;border-top:1px solid var(--sep)}li:first-child{border-top:none}
+label{display:block;font-weight:600;font-size:14px;margin:0 0 .35rem}
+input{font:600 1.375rem/1.2 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;width:100%;min-height:48px;padding:.55rem .85rem;border:1px solid var(--control);border-radius:10px;background:var(--surface);color:var(--text)}
+input:focus{border-color:var(--blue)}
+input[aria-invalid=true]{border-color:var(--red)}
+.row{display:grid;gap:.6rem;margin-top:1.25rem}
+button{font:inherit;font-weight:700;font-size:15px;padding:.55rem 1.2rem;border-radius:999px;border:2px solid var(--blue);background:var(--blue);color:var(--on-blue);min-height:42px;cursor:pointer;width:100%}
+button:hover{background:var(--blue-h);border-color:var(--blue-h)}
+button.ghost{background:transparent;color:var(--blue)}
+button.ghost:hover{background:var(--fill)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.err{color:var(--red);font-weight:600;font-size:14px;margin:.4rem 0 0}.note{font-size:13px;color:var(--text2);margin:.4rem 0 0}
+main>.note{text-align:center;margin-top:1.25rem}
+</style></head><body><main><p class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14" pathLength="100" transform="rotate(-90 20 20)"/></svg>Closed Loop</p><div class="card">${body}</div><p class="note">Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency.</p></main></body></html>`,
       {
         status,
         headers: {

@@ -3,7 +3,7 @@
 import { $, $$, SCOPE_NOTICE, SIMULATED_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph, loopKind } from '/shared/app.js';
 
 const H = 'demo';
-const state = { view: null, ledger: null, contactsRendered: false, editing: new Set() };
+const state = { view: null, ledger: null, contactsRendered: false, editing: new Set(), kinds: new Map() };
 
 $('#scope-notice').textContent = SCOPE_NOTICE;
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
@@ -42,8 +42,8 @@ function renderHero(v) {
   const name = v.household.recipientName;
   const [date] = v.localNow.split(' ');
   const day = new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
-  $('#hero-eyebrow').textContent = `${name}’s check-ins`;
-  $('#hero-title').textContent = day;
+  $('#hero-title').textContent = `${name}’s check-ins`;
+  $('#hero-eyebrow').textContent = day;
   const statusText = {
     active: ['ok', 'Active'],
     paused: ['wait', `Paused until ${v.pausedUntilLocal}`],
@@ -52,7 +52,13 @@ function renderHero(v) {
     no_consent: ['bad', 'No consent recorded: check-ins are off'],
   }[v.status] || ['wait', v.status];
   const ends = v.consent && !v.consent.revokedAt ? new Date(v.consent.planExpiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
-  $('#plan-status').innerHTML = `<span class="pill ${statusText[0]}">${esc(statusText[1])}</span>${ends && v.status !== 'expired' ? `<span>Plan runs until ${esc(ends)}</span>` : ''}<span>· ${esc(v.alertsToday)} of ${esc(v.ladder.dailyAlertCap)} emails used today</span><span>· Household time ${esc(v.localNow.slice(11))} (simulated clock)</span>`;
+  const kv = (term, value, note = '') => `<div><dt>${esc(term)}</dt><dd>${value}${note ? `<small>${esc(note)}</small>` : ''}</dd></div>`;
+  $('#plan-status').innerHTML = [
+    kv('Status', `<span class="pill ${statusText[0]}">${esc(statusText[1])}</span>`),
+    ends && v.status !== 'expired' ? kv('Plan', `Runs until ${esc(ends)}`, 'Then stops until consent is recorded again') : kv('Plan', 'Not running'),
+    kv('Family emails today', `${esc(v.alertsToday)} of ${esc(v.ladder.dailyAlertCap)}`, 'Daily limit you set'),
+    kv('Household time', esc(v.localNow.slice(11)), 'Simulated clock'),
+  ].join('');
 }
 
 // ---- Ledger ----
@@ -87,7 +93,10 @@ function entryHtml(i) {
   const ack = i.canAcknowledge
     ? `<button class="btn small act" type="button" data-ack="${esc(i.occurrenceId)}">I've been in touch<span class="visually-hidden">: acknowledge ${esc(i.label)}, ${esc(i.date)}</span></button>`
     : '';
-  return `<li class="entry" data-kind="${loopKind(i.state)}">
+  const kind = loopKind(i.state);
+  const changed = state.kinds.has(i.occurrenceId) && state.kinds.get(i.occurrenceId) !== kind;
+  state.kinds.set(i.occurrenceId, kind);
+  return `<li class="entry${changed ? ' changed' : ''}" data-kind="${kind}">
     ${loopGlyph(i.state)}
     <div>
       <h3>${esc(i.label)}</h3>
@@ -116,7 +125,7 @@ function renderLedger(l) {
   $('#ledger-earlier').innerHTML = html || '<li class="help">Nothing earlier yet.</li>';
   $('#activity-list').innerHTML = l.events
     .slice(0, 40)
-    .map((e) => `<li><time datetime="${esc(e.at)}">${esc(e.local)}</time> ${esc(e.detail)}</li>`)
+    .map((e) => `<li><time datetime="${esc(e.at)}">${esc(e.local)}</time> <span class="what">${esc(e.detail)}</span></li>`)
     .join('');
 }
 
@@ -141,7 +150,7 @@ function checkinHtml(c, isNew = false) {
     </div>`;
   const windows = c.windows.map((w, i) => `<span>${esc(w.start)}–${esc(w.end)}</span>`).join(', ');
   return `<details class="checkin" data-id="${esc(c.id)}" ${isNew ? 'open data-new' : ''}>
-    <summary>${loopGlyph(c.active ? 'PROMPTED' : 'PAUSED')}<span><span class="sum-title">${esc(c.label || 'New check-in')}</span><span class="sum-sub">${windows}${c.active ? '' : ' · turned off'}</span></span></summary>
+    <summary>${loopGlyph(c.active ? 'SCHEDULED' : 'PAUSED')}<span><span class="sum-title">${esc(c.label || 'New check-in')}</span><span class="sum-sub">${windows}${c.active ? '' : ' · turned off'}</span></span></summary>
     <form class="body" novalidate>
       ${field('label', 'What it is called', c.label, { help: 'Short and general, for example “your morning routine”.' })}
       ${field('prompt', 'The question, as it will be read aloud', c.prompt, { help: 'For example “Have you done your morning routine yet?”' })}
@@ -155,7 +164,7 @@ function checkinHtml(c, isNew = false) {
       <fieldset><legend>When to ask</legend><div data-windows>${c.windows.map((w, i) => windowRow(p, w, i)).join('')}</div>
         <button class="btn ghost small" type="button" data-add-window>Add a window</button></fieldset>
       ${field('calmingLine', 'If they seem confused or upset, say this instead of asking', c.calmingLine, { help: 'Something you would say. It is the only thing said; no questions follow.', textarea: true, max: 160 })}
-      <label class="check"><input type="checkbox" name="active" ${c.active ? 'checked' : ''}> Ask this check-in</label>
+      <label class="switch-row"><input type="checkbox" role="switch" name="active" ${c.active ? 'checked' : ''}> Ask this check-in</label>
       <p class="error" data-form-error aria-live="polite"></p>
       <div class="form-actions">
         <button class="btn" type="submit">Save check-in</button>
@@ -167,7 +176,8 @@ function checkinHtml(c, isNew = false) {
 
 function renderCheckins(list) {
   const open = new Set($$('.checkin[open]').map((d) => d.dataset.id));
-  $('#checkin-list').innerHTML = list.map((c) => checkinHtml(c)).join('');
+  const byTime = [...list].sort((a, b) => (a.windows[0]?.start ?? '').localeCompare(b.windows[0]?.start ?? ''));
+  $('#checkin-list').innerHTML = byTime.map((c) => checkinHtml(c)).join('');
   $$('.checkin').forEach((d) => {
     if (open.has(d.dataset.id)) d.open = true;
     wireCheckin(d);
@@ -289,7 +299,7 @@ function renderContacts(v) {
   const group = (sel, legend, ids) => {
     $(sel).innerHTML =
       `<legend>${legend}</legend>` +
-      v.household.contacts.map((c) => `<label class="check"><input type="checkbox" value="${esc(c.id)}" ${ids.includes(c.id) ? 'checked' : ''}> ${esc(c.name)} (${esc(c.relation)})</label>`).join('');
+      v.household.contacts.map((c) => `<label class="check"><input type="checkbox" value="${esc(c.id)}" ${ids.includes(c.id) ? 'checked' : ''}> <span>${esc(c.name)} <span class="help-inline">(${esc(c.relation)})</span></span></label>`).join('');
   };
   group('#l1-group', 'Email first', v.ladder.l1ContactIds);
   group('#l2-group', 'Email second, if nobody acknowledges', v.ladder.l2ContactIds);
@@ -460,6 +470,22 @@ document.addEventListener('click', async (e) => {
     toast(err.message);
   }
 });
+
+// ---- Side navigation: mark the section in view ----
+
+const navLinks = $$('.sidenav a');
+const sections = $$('main section[id]');
+let spyFrame = 0;
+function markCurrent() {
+  spyFrame = 0;
+  const line = innerHeight * 0.3;
+  let current = sections[0];
+  for (const s of sections) if (s.getBoundingClientRect().top <= line) current = s;
+  if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) current = sections.at(-1);
+  navLinks.forEach((a) => (a.getAttribute('href') === `#${current.id}` ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current')));
+}
+addEventListener('scroll', () => (spyFrame ||= requestAnimationFrame(markCurrent)), { passive: true });
+markCurrent();
 
 // ---- Load and poll ----
 

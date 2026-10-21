@@ -13,29 +13,35 @@ export const CARD_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Check-in card</title>
 <style>
-  :root { --paper:#fffaf0; --ink:#1f2a2c; --ink2:#4a5557; --rule:#d8ccb4; --sage:#3f6b4f; --ochre:#8a5a12; --terra:#b2441f; --slate:#3d5a80; color-scheme: light; }
-  :root[data-theme="dark"] { --paper:#1e2829; --ink:#efe8da; --ink2:#b9b2a4; --rule:#34403f; --sage:#8fc29f; --ochre:#e2b25c; --terra:#f08a66; --slate:#9db7da; color-scheme: dark; }
+  :root { --surface:#ffffff; --text:#0f141a; --text2:#5b6573; --sep:#e3e6ea; --track:#eceef1; --blue:#0972d3; --green:#037f0c; --amber:#8d6605; --red:#d01a1a; --grey:#5b6573; color-scheme: light; }
+  :root[data-theme="dark"] { --surface:#1a1d22; --text:#f2f3f5; --text2:#a9b2be; --sep:#2e333b; --track:#2a2f36; --blue:#5aa7f0; --green:#4cc35a; --amber:#e5b941; --red:#ff7a7a; --grey:#a9b2be; color-scheme: dark; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: transparent; }
-  body { font: 16px/1.4 "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; color: var(--ink); }
-  .card { background: var(--paper); border: 1.5px solid var(--rule); border-radius: 16px; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; align-items: center; }
-  .ring { width: 56px; height: 56px; grid-row: span 3; }
+  body { font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  .card { background: var(--surface); border: 1px solid var(--sep); border-radius: 14px; padding: 12px 14px; display: grid; grid-template-columns: auto 1fr; gap: 1px 12px; align-items: center; }
+  .ring { width: 40px; height: 40px; grid-column: 1; grid-row: 1 / span 3; align-self: start; margin-top: 2px; }
   .ring circle { fill: none; stroke-width: 6; stroke-linecap: round; }
-  .ring .track { stroke: var(--rule); opacity: .5; }
-  .ring .arc { stroke: var(--ochre); stroke-dasharray: 72 100; transform: rotate(-90deg); transform-origin: 28px 28px; transition: stroke-dasharray .9s cubic-bezier(.5,0,.2,1), stroke .4s; }
-  .ring[data-kind="closed"] .arc { stroke: var(--sage); stroke-dasharray: 100 0; }
-  .ring[data-kind="human"] .arc { stroke: var(--terra); stroke-dasharray: 100 0; }
-  .ring[data-kind="paused"] .arc { stroke: var(--ink2); stroke-dasharray: 2 6; }
-  .ring[data-kind="later"] .arc { stroke: var(--ochre); stroke-dasharray: 60 100; }
-  .ring .dot { fill: var(--sage); opacity: 0; transition: opacity .4s .7s; }
+  .ring .track { stroke: var(--track); }
+  .ring .arc { stroke: var(--blue); stroke-dasharray: 72 100; transform: rotate(-90deg); transform-origin: 28px 28px; transition: stroke-dasharray .8s cubic-bezier(.3,0,.1,1), stroke .3s; }
+  .ring[data-kind="closed"] .arc { stroke: var(--green); stroke-dasharray: 100 0; }
+  .ring[data-kind="human"] .arc { stroke: var(--red); stroke-dasharray: 100 0; }
+  .ring[data-kind="paused"] .arc { stroke: var(--grey); stroke-dasharray: 2 7; }
+  .ring[data-kind="later"] .arc { stroke: var(--blue); stroke-dasharray: 58 100; }
+  .ring .dot { fill: var(--green); opacity: 0; transition: opacity .3s .6s; }
   .ring[data-kind="closed"] .dot { opacity: 1; }
-  .kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink2); }
-  .title { font-family: Georgia, "Times New Roman", serif; font-size: 20px; font-weight: 600; line-height: 1.2; }
-  .sub { font-size: 14px; color: var(--ink2); }
-  ul { list-style: none; margin: 6px 0 0; padding: 0; grid-column: 1 / -1; }
-  li { display: flex; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px dashed var(--rule); font-size: 15px; }
-  li svg { width: 22px; height: 22px; flex: none; }
-  .foot { grid-column: 1 / -1; margin-top: 6px; font-size: 11px; color: var(--ink2); }
+  .title { grid-column: 2; grid-row: 1; font-size: 17px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
+  .kicker { grid-column: 2; grid-row: 2; font-size: 13px; font-weight: 600; color: var(--blue); }
+  .card:has(.ring[data-kind="closed"]) .kicker { color: var(--green); }
+  .card:has(.ring[data-kind="human"]) .kicker { color: var(--red); }
+  .card:has(.ring[data-kind="paused"]) .kicker { color: var(--text2); }
+  .sub { grid-column: 2; grid-row: 3; font-size: 13px; color: var(--text2); }
+  .sub:empty { display: none; }
+  ul { list-style: none; margin: 8px 0 0; padding: 0; grid-column: 1 / -1; border-top: 1px solid var(--sep); }
+  li { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--sep); font-size: 14px; }
+  li span { display: block; }
+  li span::first-letter { text-transform: uppercase; }
+  li svg { width: 18px; height: 18px; flex: none; }
+  .foot { grid-column: 1 / -1; margin-top: 8px; font-size: 11px; color: var(--text2); }
 </style>
 </head>
 <body>
@@ -60,7 +66,7 @@ export const CARD_HTML = `<!doctype html>
   function text(id, v) { $(id).textContent = v || ''; }
   function mini(kind) {
     var dash = kind === 'closed' ? '100 0' : kind === 'paused' ? '2 6' : '70 100';
-    var color = kind === 'closed' ? 'var(--sage)' : kind === 'human' ? 'var(--terra)' : 'var(--ochre)';
+    var color = kind === 'closed' ? 'var(--green)' : kind === 'human' ? 'var(--red)' : 'var(--blue)';
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="' + dash + '" transform="rotate(-90 12 12)"/></svg>';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }

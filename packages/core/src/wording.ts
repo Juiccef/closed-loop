@@ -145,9 +145,9 @@ const escapeHtml = (s: string) =>
 
 function render(subject: string, paragraphs: string[], link?: { href: string; label: string }): EmailContent {
   const text = [...paragraphs, ...(link ? [`${link.label}: ${link.href}`] : []), '', SCOPE_NOTICE].join('\n\n');
-  const html = `<!doctype html><html lang="en"><body style="font-family:system-ui,sans-serif;font-size:18px;line-height:1.5;max-width:560px">
+  const html = `<!doctype html><html lang="en"><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:17px;line-height:1.5;max-width:560px">
 ${paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join('\n')}
-${link ? `<p><a href="${escapeHtml(link.href)}" style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;text-decoration:none;border-radius:6px">${escapeHtml(link.label)}</a></p>` : ''}
+${link ? `<p><a href="${escapeHtml(link.href)}" style="display:inline-block;padding:12px 22px;background:#0972d3;color:#fff;font-weight:700;text-decoration:none;border-radius:999px">${escapeHtml(link.label)}</a></p>` : ''}
 <p style="font-size:14px;color:#555">${escapeHtml(SCOPE_NOTICE)}</p>
 </body></html>`;
   return { subject, text, html };

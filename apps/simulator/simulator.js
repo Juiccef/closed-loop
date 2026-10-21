@@ -104,6 +104,7 @@ function mountCard(toolName, args, result) {
       traffic({ kind: 'app', tag: 'MCP App', title: `${uri} ← tool-result`, meta: 'sandboxed iframe', line: 'ui/initialize → initialized → tool-input → tool-result', body: { uri, tool: toolName, delivered: result } });
     } else if (m.method === 'ui/notifications/size-changed') {
       frame.style.height = `${Math.min(320, Math.max(60, m.params?.height ?? 120))}px`;
+      if (!wrap.closest('li')?.nextElementSibling) $('#captions').scrollTop = $('#captions').scrollHeight; // keep the newest card in view
     } else if (m.id != null && m.method) {
       post({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'Method not supported by this host' } });
     }

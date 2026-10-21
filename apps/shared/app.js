@@ -124,7 +124,7 @@ export function loopGlyph(state) {
     kind === 'closed' || kind === 'acked'
       ? '<circle class="dot" cx="16" cy="16" r="4.5"/>'
       : kind === 'human'
-        ? '<line class="mark" x1="16" y1="10" x2="16" y2="17"/><circle class="dot" cx="16" cy="22" r="1.8" style="fill:var(--terra)"/>'
+        ? '<line class="mark" x1="16" y1="10" x2="16" y2="17"/><circle class="dot" cx="16" cy="22" r="1.8"/>'
         : '';
   return `<svg class="loop" data-kind="${kind}" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle class="ring" cx="16" cy="16" r="12" pathLength="100" transform="rotate(-90 16 16)"/>${inner}</svg>`;
 }

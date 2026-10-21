@@ -7,93 +7,354 @@
     <meta name="description" content="Daily check-ins that close the loop: an MCP server for an Alexa+ add-on, a caregiver console, and a simulated client." />
     <link rel="stylesheet" href="/shared/base.css" />
     <style>
-      main {
-        max-width: 60rem;
+      .landing {
+        max-width: 66rem;
         margin: 0 auto;
-        padding: 3.5rem 1.25rem 3rem;
+        padding: 4.5rem 1.5rem 3rem;
+      }
+      .hero {
+        text-align: center;
+        margin-bottom: 3rem;
       }
       .mark {
-        width: 72px;
-        height: 72px;
+        width: 64px;
+        height: 64px;
+        display: block;
+        margin: 0 auto 1.25rem;
       }
       .mark circle {
         fill: none;
-        stroke: var(--terra);
-        stroke-width: 6;
+        stroke-width: 5;
         stroke-linecap: round;
-        stroke-dasharray: 82 100;
-        animation: close 2.4s 0.4s cubic-bezier(0.5, 0, 0.2, 1) forwards;
       }
-      @keyframes close {
+      .mark .track {
+        stroke: var(--fill);
+      }
+      .mark .arc {
+        stroke: var(--blue);
+        stroke-dasharray: 78 100;
+        animation: close-mark 1.4s 0.5s cubic-bezier(0.3, 0, 0.1, 1) forwards;
+      }
+      @keyframes close-mark {
         to {
           stroke-dasharray: 100 0;
-          stroke: var(--sage);
+          stroke: var(--green);
         }
       }
-      h1 {
-        font-size: clamp(2.4rem, 6vw, 4rem);
-        margin: 0.6rem 0 0.3rem;
+      .hero h1 {
+        font-size: 3.5rem;
+        letter-spacing: -0.03em;
+        margin: 0 0 0.75rem;
       }
       .lede {
-        font-family: var(--font-display);
-        font-size: clamp(1.2rem, 2.4vw, 1.55rem);
-        color: var(--ink-2);
-        max-width: 40rem;
-        margin: 0 0 2rem;
+        font-size: 1.3125rem;
+        line-height: 1.45;
+        color: var(--text-2);
+        max-width: 38rem;
+        margin: 0 auto;
+        text-wrap: balance;
       }
+
       .doors {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-        gap: 1rem;
-        margin: 0 0 2rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 1.25rem;
       }
       .door {
-        display: block;
-        background: var(--card);
-        border: 1px solid var(--rule);
-        border-radius: var(--radius);
-        box-shadow: var(--shadow);
-        padding: 1.3rem 1.4rem;
-        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        color: var(--text);
         text-decoration: none;
-        transition: transform 0.15s ease;
+        transition: box-shadow 0.2s ease;
       }
       .door:hover {
-        transform: translateY(-2px);
+        color: var(--text);
+        box-shadow: var(--elevation-high);
+      }
+      .door:focus-visible {
+        outline-offset: 3px;
+        border-radius: var(--radius);
+      }
+      .preview {
+        position: relative;
+        background: var(--surface-2);
+        border-bottom: 1px solid var(--separator);
+        padding: 1.5rem 1.5rem 1.25rem;
+        min-height: 13.5rem;
+      }
+      .preview-tag {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-2);
+        background: var(--surface);
+        border: 1px solid var(--separator);
+        border-radius: 999px;
+        padding: 0.15rem 0.5rem;
+      }
+      .door-text {
+        padding: 1.25rem 1.5rem 1.4rem;
       }
       .door h2 {
-        font-size: 1.5rem;
+        font-size: 1.375rem;
+        margin: 0 0 0.35rem;
       }
       .door p {
-        margin: 0;
-        color: var(--ink-2);
+        margin: 0 0 0.9rem;
+        color: var(--text-2);
+        font-size: 0.9375rem;
       }
-      .notices {
+      .door-go {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-weight: 600;
+        color: var(--blue);
+      }
+      .door-go .icon {
+        background: currentColor;
+        mask: var(--i-arrow) center / contain no-repeat;
+        transition: transform 0.2s ease;
+      }
+      .door:hover .door-go .icon {
+        transform: translateX(3px);
+      }
+
+      /* Preview: conversation */
+      .bubbles {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        line-height: 1.35;
+      }
+      .bubble {
+        max-width: 80%;
+        padding: 0.45rem 0.75rem;
+        border-radius: 16px;
+      }
+      .bubble.a {
+        background: var(--fill);
+        border-bottom-left-radius: 5px;
+      }
+      .bubble.p {
+        align-self: flex-end;
+        background: var(--blue);
+        color: var(--on-blue);
+        border-bottom-right-radius: 5px;
+      }
+      .mini-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        width: fit-content;
+        padding: 0.4rem 0.7rem;
+        background: var(--surface);
+        border: 1px solid var(--separator);
+        border-radius: 10px;
+        font-size: 0.8125rem;
+        color: var(--text-2);
+      }
+      .mini-status strong {
+        color: var(--blue);
+      }
+
+      /* Preview: ledger */
+      .rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        background: var(--surface);
+        border: 1px solid var(--separator);
+        border-radius: 12px;
+        font-size: 0.875rem;
+      }
+      .rows li {
         display: grid;
-        gap: 0.6rem;
+        grid-template-columns: auto 1fr;
+        gap: 0 0.6rem;
+        align-items: center;
+        padding: 0.55rem 0.8rem;
+        border-bottom: 1px solid var(--separator);
+      }
+      .rows li:last-child {
+        border-bottom: none;
+      }
+      .rows .loop {
+        grid-row: span 2;
+        width: 1.35rem;
+        height: 1.35rem;
+      }
+      .rows b {
+        font-weight: 600;
+      }
+      .rows span {
+        font-weight: 600;
+        font-size: 0.8125rem;
+      }
+      .s-closed {
+        color: var(--green);
+      }
+      .s-alert {
+        color: var(--amber);
+      }
+      .s-wait {
+        color: var(--text-2);
+      }
+
+      .about {
+        padding: 0.5rem 0;
+      }
+      .about h2 {
+        font-size: 1.0625rem;
+        margin: 0;
+        padding: 0.9rem 1.5rem 0.6rem;
+      }
+      .about ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        border-top: 1px solid var(--separator);
+      }
+      .about li {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.8rem 1.5rem;
+        border-bottom: 1px solid var(--separator);
+        font-size: 0.9375rem;
+      }
+      .about li:last-child {
+        border-bottom: none;
+      }
+      .about li::before {
+        content: '';
+        flex: none;
+        width: 17px;
+        height: 17px;
+        margin-top: 2px;
+        background: var(--blue);
+        mask: var(--i-info) center / contain no-repeat;
+      }
+      .site-foot {
+        text-align: center;
+        font-size: 0.8125rem;
+        color: var(--text-2);
+        padding: 0 1.5rem 2.5rem;
+      }
+
+      @media (max-width: 600px) {
+        .topnav nav {
+          display: none;
+        }
+      }
+      @media (max-width: 760px) {
+        .landing {
+          padding-top: 2.5rem;
+        }
+        .hero h1 {
+          font-size: 2.5rem;
+        }
+        .lede {
+          font-size: 1.125rem;
+        }
+        .doors {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        .about h2,
+        .about li {
+          padding-left: 1rem;
+          padding-right: 1rem;
+        }
       }
     </style>
   </head>
   <body>
-    <main>
-      <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14" pathLength="100" transform="rotate(-90 20 20)" /></svg>
-      <h1>Closed Loop</h1>
-      <p class="lede">A daily check-in for someone who lives alone. It records what they said honestly, follows up later, and tells family only when the loop stays open.</p>
+    <header class="topnav">
+      <a class="brand" href="/" aria-label="Closed Loop home">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14" pathLength="100" transform="rotate(-90 20 20)" /></svg>
+        <span>Closed Loop</span>
+      </a>
+      <span class="topnav-spacer"></span>
+      <nav aria-label="Pages">
+        <ul class="topnav-links">
+          <li><a href="/simulator/">Simulated client</a></li>
+          <li><a href="/console/">Caregiver console</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <main class="landing">
+      <section class="hero" aria-labelledby="title">
+        <svg class="mark" viewBox="0 0 40 40" aria-hidden="true">
+          <circle class="track" cx="20" cy="20" r="15" />
+          <circle class="arc" cx="20" cy="20" r="15" pathLength="100" transform="rotate(-90 20 20)" />
+        </svg>
+        <h1 id="title">Closed Loop</h1>
+        <p class="lede">A daily check-in for someone who lives alone. It records what they said honestly, follows up later, and tells family only when the loop stays open.</p>
+      </section>
+
       <div class="doors">
-        <a class="door" href="/simulator/">
-          <h2>Simulated client</h2>
-          <p>Talk to the check-in add-on through a self-built MCP client, move the clock, and watch the real JSON-RPC traffic.</p>
+        <a class="door container" href="/simulator/">
+          <div class="preview" aria-hidden="true">
+            <span class="preview-tag">Example</span>
+            <div class="bubbles">
+              <div class="bubble a">Good morning, Margaret. Have you done your morning routine yet?</div>
+              <div class="bubble p">I think so, maybe after lunch</div>
+              <div class="bubble a">Okay. I'll ask again around 1 pm.</div>
+              <div class="mini-status">
+                <svg class="loop" data-kind="open" viewBox="0 0 32 32"><circle class="ring" cx="16" cy="16" r="12" pathLength="100" transform="rotate(-90 16 16)" /></svg>
+                Recorded: <strong>said later</strong>
+              </div>
+            </div>
+          </div>
+          <div class="door-text">
+            <h2>Simulated client</h2>
+            <p>Talk to the check-in add-on through a self-built MCP client, move the clock, and watch the real JSON-RPC traffic.</p>
+            <span class="door-go">Open the simulator <span class="icon" aria-hidden="true"></span></span>
+          </div>
         </a>
-        <a class="door" href="/console/">
-          <h2>Caregiver console</h2>
-          <p>Write check-ins in your own words, choose who gets emailed, record consent, and read the honest ledger.</p>
+        <a class="door container" href="/console/">
+          <div class="preview" aria-hidden="true">
+            <span class="preview-tag">Example</span>
+            <ul class="rows">
+              <li>
+                <svg class="loop" data-kind="closed" viewBox="0 0 32 32"><circle class="ring" cx="16" cy="16" r="12" pathLength="100" transform="rotate(-90 16 16)" /><circle class="dot" cx="16" cy="16" r="4.5" /></svg>
+                <b>Your morning routine</b><span class="s-closed">Reported by the person</span>
+              </li>
+              <li>
+                <svg class="loop" data-kind="alert" viewBox="0 0 32 32"><circle class="ring" cx="16" cy="16" r="12" pathLength="100" transform="rotate(-90 16 16)" /></svg>
+                <b>Your lunchtime check</b><span class="s-alert">No response (asked, no answer)</span>
+              </li>
+              <li>
+                <svg class="loop" data-kind="waiting" viewBox="0 0 32 32"><circle class="ring" cx="16" cy="16" r="12" pathLength="100" transform="rotate(-90 16 16)" /></svg>
+                <b>Your evening check-in</b><span class="s-wait">Not asked yet</span>
+              </li>
+            </ul>
+          </div>
+          <div class="door-text">
+            <h2>Caregiver console</h2>
+            <p>Write check-ins in your own words, choose who gets emailed, record consent, and read the honest ledger.</p>
+            <span class="door-go">Open the console <span class="icon" aria-hidden="true"></span></span>
+          </div>
         </a>
       </div>
-      <div class="notices">
-        <p class="notice">Simulated Alexa+ client. Not Amazon software. Alexa+ add-on tooling is partner-only, so this project implements the MCP server side and demonstrates it through a self-built MCP client, as the hackathon FAQ allows.</p>
-        <p class="notice">Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency.</p>
-        <p class="notice">Check-in conversations are started by the person, a household routine, or the simulator. MCP add-ons have no documented way to speak first.</p>
-      </div>
+
+      <section class="about container" aria-labelledby="about-title">
+        <h2 id="about-title">Before you try it</h2>
+        <ul>
+          <li>Simulated Alexa+ client. Not Amazon software. Alexa+ add-on tooling is partner-only, so this project implements the MCP server side and demonstrates it through a self-built MCP client, as the hackathon FAQ allows.</li>
+          <li>Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency.</li>
+          <li>Check-in conversations are started by the person, a household routine, or the simulator. MCP add-ons have no documented way to speak first.</li>
+        </ul>
+      </section>
     </main>
+
+    <footer class="site-foot">
+      <p>Open source under the MIT License · <a href="https://github.com/Juiccef/closed-loop">Source on GitHub</a></p>
+    </footer>
   </body>
 </html>

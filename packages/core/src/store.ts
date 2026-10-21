@@ -60,6 +60,28 @@ export interface Store extends ClockStore {
 
   /** Removes every item for the household, including the registry entry. Returns the number of items removed. */
   deleteHousehold(id: HouseholdId): Promise<number>;
+
+  // ---- OAuth (only hashes of codes and tokens are stored; every consume is atomic and single-use) ----
+  putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string): Promise<void>;
+  /** Returns the household and deletes the code, or undefined when unknown, used, or expired. */
+  consumeLinkCode(codeHash: string, now: Date): Promise<HouseholdId | undefined>;
+  putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string): Promise<void>;
+  consumeAuthCode(codeHash: string, now: Date): Promise<OAuthGrant | undefined>;
+  putRefreshToken(householdId: HouseholdId, tokenHash: string, grant: OAuthGrant, expiresAt: string): Promise<void>;
+  consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date): Promise<OAuthGrant | undefined>;
+  listRefreshTokens(householdId: HouseholdId): Promise<Array<{ clientId: string; createdAt: string; expiresAt: string }>>;
+  deleteRefreshTokens(householdId: HouseholdId): Promise<number>;
+}
+
+/** What an authorization code or refresh token stands for. */
+export interface OAuthGrant {
+  clientId: string;
+  householdId: HouseholdId;
+  scope: string;
+  resource: string;
+  redirectUri?: string;
+  codeChallenge?: string;
+  createdAt: string;
 }
 
 export const UTTERANCE_TTL_DAYS = 30;
@@ -203,8 +225,48 @@ export class MemoryStore implements Store {
     return this.caps.get(`${id}|${date}`) ?? 0;
   }
 
-  async deleteHousehold(id: HouseholdId) {
+  private linkCodes = new Map<string, { householdId: HouseholdId; expiresAt: string }>();
+  private authCodes = new Map<string, { grant: OAuthGrant; expiresAt: string }>();
+  private refreshTokens = new Map<string, { householdId: HouseholdId; grant: OAuthGrant; expiresAt: string }>();
+
+  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string) {
+    this.linkCodes.set(codeHash, { householdId, expiresAt });
+  }
+  async consumeLinkCode(codeHash: string, now: Date) {
+    const v = this.linkCodes.get(codeHash);
+    this.linkCodes.delete(codeHash);
+    return v && new Date(v.expiresAt) > now ? v.householdId : undefined;
+  }
+  async putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string) {
+    this.authCodes.set(codeHash, { grant: clone(grant), expiresAt });
+  }
+  async consumeAuthCode(codeHash: string, now: Date) {
+    const v = this.authCodes.get(codeHash);
+    this.authCodes.delete(codeHash);
+    return v && new Date(v.expiresAt) > now ? clone(v.grant) : undefined;
+  }
+  async putRefreshToken(householdId: HouseholdId, tokenHash: string, grant: OAuthGrant, expiresAt: string) {
+    this.refreshTokens.set(`${householdId}|${tokenHash}`, { householdId, grant: clone(grant), expiresAt });
+  }
+  async consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date) {
+    const key = `${householdId}|${tokenHash}`;
+    const v = this.refreshTokens.get(key);
+    this.refreshTokens.delete(key);
+    return v && new Date(v.expiresAt) > now ? clone(v.grant) : undefined;
+  }
+  async listRefreshTokens(householdId: HouseholdId) {
+    return [...this.refreshTokens.values()]
+      .filter((v) => v.householdId === householdId)
+      .map((v) => ({ clientId: v.grant.clientId, createdAt: v.grant.createdAt, expiresAt: v.expiresAt }));
+  }
+  async deleteRefreshTokens(householdId: HouseholdId) {
     let n = 0;
+    for (const [k, v] of [...this.refreshTokens]) if (v.householdId === householdId) (this.refreshTokens.delete(k), n++);
+    return n;
+  }
+
+  async deleteHousehold(id: HouseholdId) {
+    let n = await this.deleteRefreshTokens(id);
     if (this.households.delete(id)) n += 2; // META + registry entry
     n += this.consents.get(id)?.length ?? 0;
     n += this.checkins.get(id)?.size ?? 0;

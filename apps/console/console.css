@@ -506,3 +506,28 @@ dialog::backdrop {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.link-code {
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  letter-spacing: 0.14em;
+  margin: 0.8rem 0 0;
+}
+.link-code:empty {
+  display: none;
+}
+.link-code small {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  letter-spacing: normal;
+  color: var(--ink-2);
+}
+.sub-h {
+  font-size: 1.1rem;
+  margin: 1.2rem 0 0.3rem;
+}
+.links-list {
+  margin: 0 0 0.6rem;
+  padding-left: 1.2rem;
+}

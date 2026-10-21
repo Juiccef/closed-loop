@@ -12,6 +12,9 @@ import {
   isValidHHMM,
   ledgerLine,
   lintCheckinText,
+  LINK_CODE_MINUTES,
+  generateLinkCode,
+  hashSecret,
   loadPlan,
   localDate,
   newOccurrence,
@@ -427,6 +430,23 @@ export function createApiHandler(cfg: ApiConfig) {
           await store.updateHousehold(id, { pausedUntil: undefined, pausedAt: undefined, pausedBy: undefined });
           await store.appendEvent({ householdId: id, at: (await clockNow(store)).toISOString(), type: 'resumed', detail: 'Check-ins resumed from the console.' });
           return json(200, { ok: true });
+        }
+        if (rest === '/link-code' && req.method === 'POST') {
+          // One-time code for linking a voice assistant account (OAuth authorize page). Expires in 10 minutes.
+          const h = await store.getHousehold(id);
+          if (!h) throw new HttpError(404, 'Household not found.');
+          const code = generateLinkCode();
+          const expiresAt = new Date(Date.now() + LINK_CODE_MINUTES * 60_000);
+          await store.putLinkCode(hashSecret(code), id, expiresAt.toISOString());
+          return json(200, { code, expiresAt: expiresAt.toISOString(), minutes: LINK_CODE_MINUTES });
+        }
+        if (rest === '/links' && req.method === 'GET') {
+          return json(200, { links: await store.listRefreshTokens(id) });
+        }
+        if (rest === '/links' && req.method === 'DELETE') {
+          const removed = await store.deleteRefreshTokens(id);
+          await store.appendEvent({ householdId: id, at: (await clockNow(store)).toISOString(), type: 'account_unlinked', detail: `Unlinked ${removed} voice assistant sign-in${removed === 1 ? '' : 's'}. Access ends within an hour.` });
+          return json(200, { removed });
         }
         if (rest === '/data' && req.method === 'DELETE') {
           const removed = await store.deleteHousehold(id);

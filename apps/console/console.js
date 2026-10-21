@@ -420,6 +420,32 @@ $('#delete').addEventListener('click', async () => {
   $('#ledger-today').innerHTML = '<li class="help">No data. Use the simulator’s “Start a fresh demo day” to recreate the demo household.</li>';
 });
 
+// ---- Link a voice assistant (OAuth link codes) ----
+
+const CLIENT_NAMES = { 'alexa-plus': 'Alexa+ add-on', simulator: 'Simulated client' };
+
+async function renderLinks() {
+  const { links } = await api(`/api/households/${H}/links`);
+  $('#links-list').innerHTML = links.length
+    ? links.map((l) => `<li>${esc(CLIENT_NAMES[l.clientId] || l.clientId)}, linked ${esc(new Date(l.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}</li>`).join('')
+    : '<li>Nothing linked yet.</li>';
+  $('#unlink').disabled = !links.length;
+}
+
+$('#make-code').addEventListener('click', async () => {
+  const r = await api(`/api/households/${H}/link-code`, { method: 'POST', body: {} });
+  const until = new Date(r.expiresAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  $('#link-code-out').innerHTML = `${esc(r.code)}<small>Works once, until ${esc(until)} (real time).</small>`;
+});
+
+$('#unlink').addEventListener('click', async () => {
+  const ok = await confirmDialog({ title: 'Unlink all voice assistant sign-ins?', body: 'New sign-ins stop at once. An existing session ends within an hour. You can link again with a new code.', okLabel: 'Unlink' });
+  if (!ok) return;
+  const r = await api(`/api/households/${H}/links`, { method: 'DELETE' });
+  toast(`Unlinked ${r.removed} sign-in${r.removed === 1 ? '' : 's'}.`);
+  await renderLinks();
+});
+
 // ---- Acknowledge from the ledger ----
 
 document.addEventListener('click', async (e) => {
@@ -445,6 +471,7 @@ async function load(force = false, contactsToo = false) {
   renderConsent(view);
   renderData(view);
   if (force || !state.editing.size) renderCheckins(view.checkins);
+  renderLinks().catch(() => {});
   if (!state.contactsRendered || contactsToo) {
     renderContacts(view);
     state.contactsRendered = true;

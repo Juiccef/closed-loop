@@ -23,6 +23,7 @@
           <li><a href="#checkins">Check-ins</a></li>
           <li><a href="#contacts">Who we email</a></li>
           <li><a href="#consent">Consent</a></li>
+          <li><a href="#link">Link Alexa+</a></li>
           <li><a href="#data">Pause and data</a></li>
           <li><a href="#activity">Activity</a></li>
         </ul>
@@ -133,6 +134,21 @@
             <button class="btn ghost warn-text" type="button" id="revoke">Revoke consent</button>
           </div>
         </form>
+      </section>
+
+      <section id="link" class="block" aria-labelledby="link-title">
+        <div class="block-head">
+          <h2 id="link-title">Link a voice assistant</h2>
+          <p class="lede">When the check-in add-on is enabled in the Alexa app, it asks for a link code. Create one here and type it on the sign-in page. Codes work once and expire after 10 minutes.</p>
+        </div>
+        <div class="card-form">
+          <div class="row-actions"><button class="btn" type="button" id="make-code">Create a link code</button></div>
+          <p id="link-code-out" class="link-code" role="status" aria-live="polite"></p>
+          <h3 class="sub-h">Linked sign-ins</h3>
+          <ul id="links-list" class="links-list"></ul>
+          <div class="row-actions"><button class="btn ghost warn-text" type="button" id="unlink">Unlink all</button></div>
+          <p class="help">Unlinking stops new sign-ins at once; an existing session ends within an hour (access tokens last at most 60 minutes).</p>
+        </div>
       </section>
 
       <section id="data" class="block" aria-labelledby="data-title">

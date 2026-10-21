@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MemoryStore, ackUrlBuilder, now, runTick, seedDemoHousehold } from '@closed-loop/core';
 import { createWebHandler, staticPathToFile } from '@closed-loop/api';
-import { serveWebHandler } from '@closed-loop/mcp-server';
+import { createOAuth, serveWebHandler } from '@closed-loop/mcp-server';
 import { FileMailer, RecordingMailer } from '@closed-loop/tick';
 import { rulesPlanner } from '@closed-loop/api';
 
@@ -23,9 +23,26 @@ const tick = (origin: string) => runTick(store, { mailer, ackUrl: ackUrlBuilder(
 
 await seed();
 
+// OAuth 2.1 (account linking). Local-only secrets; the AWS deployment reads real ones from .env.
+const oauth = createOAuth(
+  {
+    signingSecret: process.env.OAUTH_SIGNING_SECRET ?? 'local-dev-oauth-signing-secret-change-me',
+    clients: [
+      {
+        id: process.env.ALEXA_CLIENT_ID ?? 'alexa-plus',
+        secret: process.env.ALEXA_CLIENT_SECRET ?? 'local-dev-alexa-secret',
+        redirectUris: (process.env.ALEXA_REDIRECT_URIS ?? 'https://alexa.example/api/skill/link/LOCAL').split(',').filter(Boolean),
+        allowClientCredentials: true,
+      },
+      { id: 'simulator', redirectUris: [], sameOriginRedirectPath: '/simulator/linked.html' },
+    ],
+  },
+  store,
+);
+
 const handler = createWebHandler(
   store,
-  { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [ORIGIN], allowSameOrigin: true, resourceUrl: `${ORIGIN}/mcp`, includeWwwAuthenticate: false },
+  { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [ORIGIN], allowSameOrigin: true, resourceUrl: `${ORIGIN}/mcp`, includeWwwAuthenticate: false, oauth },
   {
     store,
     adminToken: ADMIN_TOKEN,

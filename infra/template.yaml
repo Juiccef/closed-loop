@@ -30,6 +30,20 @@ Parameters:
   SeedL2Email:
     Type: String
     Description: Demo second contact (must be verified while SES is in the sandbox).
+  OAuthSigningSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: HMAC secret for OAuth access tokens (JWT, HS256).
+  AlexaClientSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Client secret for the statically registered Alexa+ OAuth client (client_id alexa-plus).
+  AlexaRedirectUris:
+    Type: String
+    Default: ''
+    Description: Comma-separated redirect URIs shown by `alexa-ai configure-account-linking` (exact match).
   BedrockModelId:
     Type: String
     Default: ''
@@ -80,6 +94,9 @@ Resources:
           SEED_L1_EMAIL: !Ref SeedL1Email
           SEED_L2_EMAIL: !Ref SeedL2Email
           BEDROCK_MODEL_ID: !Ref BedrockModelId
+          OAUTH_SIGNING_SECRET: !Ref OAuthSigningSecret
+          ALEXA_CLIENT_SECRET: !Ref AlexaClientSecret
+          ALEXA_REDIRECT_URIS: !Ref AlexaRedirectUris
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref Table }
         - Statement:

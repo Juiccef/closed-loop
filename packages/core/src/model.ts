@@ -169,6 +169,8 @@ export const EVENT_TYPES = [
   'review_flagged',
   'data_deleted',
   'plan_expired',
+  'account_linked',
+  'account_unlinked',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -193,6 +195,9 @@ export const keys = {
   event: (id: HouseholdId, at: string, suffix: string) => ({ PK: `H#${id}`, SK: `EVT#${at}#${suffix}` }),
   alertCap: (id: HouseholdId, date: string) => ({ PK: `H#${id}`, SK: `CAP#${date}` }),
   registry: (id: HouseholdId) => ({ PK: 'REGISTRY', SK: `H#${id}` }),
+  linkCode: (codeHash: string) => ({ PK: `LINK#${codeHash}`, SK: 'CODE' }),
+  authCode: (codeHash: string) => ({ PK: `AUTHCODE#${codeHash}`, SK: 'CODE' }),
+  refreshToken: (id: HouseholdId, tokenHash: string) => ({ PK: `H#${id}`, SK: `RT#${tokenHash}` }),
   clock: () => ({ PK: 'CLOCK', SK: 'GLOBAL' }),
 };
 

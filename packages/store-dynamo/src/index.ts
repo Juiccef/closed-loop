@@ -23,6 +23,7 @@ import {
   type Household,
   type HouseholdId,
   type LadderConfig,
+  type OAuthGrant,
   type Occurrence,
   type Store,
   type Utterance,
@@ -283,6 +284,48 @@ export class DynamoStore implements Store {
   async getAlertCount(id: HouseholdId, date: string) {
     const item = await this.get(keys.alertCap(id, date));
     return typeof item?.count === 'number' ? item.count : 0;
+  }
+
+  // ---- OAuth: hashes only, TTL-expired, consumed with a conditional delete so each code works once ----
+
+  private async consume(key: Item, now: Date): Promise<Item | undefined> {
+    try {
+      const res = await this.doc.send(
+        new DeleteCommand({ TableName: this.table, Key: key, ConditionExpression: 'attribute_exists(PK)', ReturnValues: 'ALL_OLD' }),
+      );
+      const item = res.Attributes;
+      return item && typeof item.expiresAt === 'string' && new Date(item.expiresAt) > now ? item : undefined;
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return undefined;
+      throw err;
+    }
+  }
+  async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string) {
+    await this.put({ ...keys.linkCode(codeHash), T: 'linkcode', householdId, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+  }
+  async consumeLinkCode(codeHash: string, now: Date) {
+    return (await this.consume(keys.linkCode(codeHash), now))?.householdId as HouseholdId | undefined;
+  }
+  async putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string) {
+    await this.put({ ...keys.authCode(codeHash), T: 'authcode', grant, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+  }
+  async consumeAuthCode(codeHash: string, now: Date) {
+    return (await this.consume(keys.authCode(codeHash), now))?.grant as OAuthGrant | undefined;
+  }
+  async putRefreshToken(householdId: HouseholdId, tokenHash: string, grant: OAuthGrant, expiresAt: string) {
+    await this.put({ ...keys.refreshToken(householdId, tokenHash), T: 'refreshtoken', grant, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+  }
+  async consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date) {
+    return (await this.consume(keys.refreshToken(householdId, tokenHash), now))?.grant as OAuthGrant | undefined;
+  }
+  async listRefreshTokens(householdId: HouseholdId) {
+    const items = await this.queryAll(this.prefix(householdId, 'RT#'));
+    return items.map((i) => ({ clientId: String((i.grant as OAuthGrant).clientId), createdAt: String((i.grant as OAuthGrant).createdAt), expiresAt: String(i.expiresAt) }));
+  }
+  async deleteRefreshTokens(householdId: HouseholdId) {
+    const items = await this.queryAll({ ...this.prefix(householdId, 'RT#'), ProjectionExpression: 'PK, SK' });
+    await Promise.all(items.map((i) => this.doc.send(new DeleteCommand({ TableName: this.table, Key: { PK: i.PK, SK: i.SK } }))));
+    return items.length;
   }
 
   // ---- Delete my data ----

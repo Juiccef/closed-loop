@@ -1,5 +1,6 @@
 // AWS entry point for the web function: MCP (/mcp), console API, acknowledge links, static pages.
 import { ackUrlBuilder, now, runTick, seedDemoHousehold } from '@closed-loop/core';
+import { createOAuth } from '@closed-loop/mcp-server';
 import { urlEventHandler, type FunctionUrlEvent } from '@closed-loop/mcp-server/src/lambda-adapter';
 import { DynamoStore } from '@closed-loop/store-dynamo';
 import { SesMailer } from '@closed-loop/tick';
@@ -18,13 +19,29 @@ const mailer = new SesMailer(env('SES_SENDER'));
 const ACK_SECRET = env('ACK_LINK_SECRET');
 const MCP_TOKEN = env('MCP_BEARER_TOKEN');
 
+const oauth = createOAuth(
+  {
+    signingSecret: env('OAUTH_SIGNING_SECRET'),
+    clients: [
+      {
+        id: process.env.ALEXA_CLIENT_ID || 'alexa-plus',
+        secret: env('ALEXA_CLIENT_SECRET'),
+        redirectUris: (process.env.ALEXA_REDIRECT_URIS ?? '').split(',').map((u) => u.trim()).filter(Boolean),
+        allowClientCredentials: true,
+      },
+      { id: 'simulator', redirectUris: [], sameOriginRedirectPath: '/simulator/linked.html' },
+    ],
+  },
+  store,
+);
+
 // Resolve credentials and open the DynamoDB connection during init (cold-start latency, see FRICTION_LOG #8).
 await store.getClockOffsetSeconds().catch(() => 0);
 
 const handler = urlEventHandler(
   createWebHandler(
     store,
-    { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [], allowSameOrigin: true, resourceUrl: '', includeWwwAuthenticate: false },
+    { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [], allowSameOrigin: true, resourceUrl: '', includeWwwAuthenticate: false, oauth },
     {
       store,
       adminToken: env('ADMIN_TOKEN'),

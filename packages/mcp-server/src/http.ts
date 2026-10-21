@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
+import { SCOPE_RESOURCES, SCOPE_SERVICE, SCOPE_TOOLS, type AccessContext, type OAuthServer } from './oauth';
 import { registerTools, type CheckinBackend } from './tools';
 
 export const SERVER_NAME = 'closed-loop-checkins';
@@ -23,6 +24,8 @@ export interface McpHttpConfig {
   includeWwwAuthenticate: boolean;
   /** Path prefix the endpoint is mounted under, e.g. '' locally or '' on a Function URL. */
   basePath?: string;
+  /** OAuth 2.1 authorization server (account linking). Without it, the OAuth endpoints answer 501. */
+  oauth?: OAuthServer;
 }
 
 const CORS_ALLOW_HEADERS = 'content-type, authorization, accept, mcp-protocol-version, mcp-session-id, last-event-id';
@@ -62,11 +65,13 @@ function tokenMatches(presented: string, expected: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function householdForToken(authHeader: string | null, config: McpHttpConfig): string | undefined {
-  const match = authHeader?.match(/^Bearer\s+(\S+)$/i);
-  if (!match?.[1]) return undefined;
+function bearerOf(authHeader: string | null): string | undefined {
+  return authHeader?.match(/^Bearer\s+(\S+)$/i)?.[1];
+}
+
+function staticHousehold(bearer: string, config: McpHttpConfig): string | undefined {
   for (const [token, householdId] of Object.entries(config.bearerTokens)) {
-    if (tokenMatches(match[1], token)) return householdId;
+    if (tokenMatches(bearer, token)) return householdId;
   }
   return undefined;
 }
@@ -75,28 +80,35 @@ function origin(url: URL): string {
   return `${url.protocol}//${url.host}`;
 }
 
+function canonicalResource(config: McpHttpConfig, url: URL): string {
+  return config.resourceUrl || `${origin(url)}${config.basePath ?? ''}/mcp`;
+}
+
+const SCOPES = [SCOPE_TOOLS, SCOPE_RESOURCES, SCOPE_SERVICE];
+
 function protectedResourceMetadata(config: McpHttpConfig, url: URL) {
   return {
-    resource: config.resourceUrl || `${origin(url)}${config.basePath ?? ''}/mcp`,
+    resource: canonicalResource(config, url),
     authorization_servers: [origin(url)],
-    scopes_supported: ['checkins'],
+    scopes_supported: SCOPES,
     bearer_methods_supported: ['header'],
-    resource_name: 'Closed Loop daily check-ins (hackathon build)',
+    resource_name: 'Closed Loop daily check-ins',
   };
 }
 
-// Metadata stub so discovery can be exercised. The endpoints answer 501: this build uses a static bearer token.
 function authorizationServerMetadata(url: URL) {
   const base = origin(url);
   return {
     issuer: base,
     authorization_endpoint: `${base}/oauth/authorize`,
     token_endpoint: `${base}/oauth/token`,
+    revocation_endpoint: `${base}/oauth/revoke`,
     response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code', 'client_credentials'],
+    grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],
     code_challenge_methods_supported: ['S256'],
-    token_endpoint_auth_methods_supported: ['client_secret_basic'],
-    scopes_supported: ['checkins'],
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+    scopes_supported: SCOPES,
+    authorization_response_iss_parameter_supported: true,
   };
 }
 
@@ -105,13 +117,14 @@ function authorizationServerMetadata(url: URL) {
  * text/event-stream. The spec requires clients to send both, but Alexa+'s client headers are undocumented,
  * and this server only ever answers with JSON, so a missing or partial Accept is completed here.
  */
-function normalizeAccept(req: Request): Request {
-  const accept = req.headers.get('accept') ?? '';
-  if (accept.includes('application/json') && accept.includes('text/event-stream')) return req;
+function normalizedHeaders(req: Request): Headers {
   const headers = new Headers(req.headers);
-  headers.set('accept', 'application/json, text/event-stream');
-  return new Request(req.url, { method: req.method, headers, body: req.body, duplex: 'half' } as RequestInit);
+  const accept = headers.get('accept') ?? '';
+  if (!(accept.includes('application/json') && accept.includes('text/event-stream'))) headers.set('accept', 'application/json, text/event-stream');
+  return headers;
 }
+
+const SERVICE_DENIED = { error: 'unauthorized', message: 'Access token required to use this tool.' };
 
 export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBackend) {
   const base = config.basePath ?? '';
@@ -134,18 +147,27 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
     if (path === '/.well-known/oauth-authorization-server') {
       return json(200, authorizationServerMetadata(url), cors);
     }
-    if (path === '/oauth/authorize' || path === '/oauth/token') {
-      return json(
-        501,
-        { error: 'temporarily_unavailable', error_description: 'OAuth is not implemented in this build; use the static bearer token.' },
-        cors,
-      );
+    if (path === '/oauth/authorize' || path === '/oauth/token' || path === '/oauth/revoke') {
+      if (!config.oauth) {
+        return json(501, { error: 'temporarily_unavailable', error_description: 'OAuth is not configured on this deployment.' }, cors);
+      }
+      const o = origin(url);
+      const canonical = canonicalResource(config, url);
+      const res =
+        path === '/oauth/authorize' ? await config.oauth.authorize(req, o, canonical) : path === '/oauth/token' ? await config.oauth.token(req, o, canonical) : await config.oauth.revoke(req);
+      return withHeaders(res, cors);
     }
 
     if (path !== '/mcp') return json(404, { error: 'not_found' }, cors);
 
-    const householdId = householdForToken(req.headers.get('authorization'), config);
-    if (!householdId) {
+    const bearer = bearerOf(req.headers.get('authorization'));
+    const staticId = bearer ? staticHousehold(bearer, config) : undefined;
+    const access: AccessContext | undefined = staticId
+      ? { kind: 'static', householdId: staticId, scopes: [SCOPE_TOOLS] }
+      : bearer && config.oauth
+        ? config.oauth.verifyAccess(bearer, origin(url), canonicalResource(config, url))
+        : undefined;
+    if (!access) {
       const headers: Record<string, string> = { ...cors };
       if (config.includeWwwAuthenticate) {
         headers['www-authenticate'] =
@@ -167,10 +189,27 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
     if (declaredLength > MAX_BODY_BYTES) {
       return json(413, { jsonrpc: '2.0', error: { code: -32000, message: 'Request too large' }, id: null }, cors);
     }
+    const text = await req.text();
+    if (text.length > MAX_BODY_BYTES) {
+      return json(413, { jsonrpc: '2.0', error: { code: -32000, message: 'Request too large' }, id: null }, cors);
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return json(400, { jsonrpc: '2.0', error: { code: -32700, message: 'Parse error' }, id: null }, cors);
+    }
+
+    // Service-level tokens (client_credentials, mcp:service) may discover tools but not call them:
+    // every tool here acts for a household, so a linked account is required (Alexa+: 401 or 403).
+    const messages = Array.isArray(parsed) ? parsed : [parsed];
+    if (access.kind === 'service' && messages.some((m) => (m as { method?: string })?.method === 'tools/call')) {
+      return json(401, SERVICE_DENIED, cors);
+    }
 
     // A fresh server and transport per request: stateless mode, no Mcp-Session-Id, no request-id collisions.
     const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
-    registerTools(server, backend, { householdId });
+    registerTools(server, backend, { householdId: access.householdId ?? '' });
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -178,7 +217,8 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
     });
     await server.connect(transport);
     try {
-      const res = await transport.handleRequest(normalizeAccept(req));
+      const forward = new Request(req.url, { method: 'POST', headers: normalizedHeaders(req) });
+      const res = await transport.handleRequest(forward, { parsedBody: parsed });
       // Read the body before closing so the response is complete.
       const body = await res.arrayBuffer();
       return withHeaders(new Response(body.byteLength ? body : null, { status: res.status, headers: res.headers }), cors);

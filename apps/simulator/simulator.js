@@ -177,7 +177,13 @@ function handleDue(sc, r) {
 }
 
 async function callTool(name, args) {
-  const r = await state.mcp.callTool(name, args);
+  let r;
+  try {
+    r = await state.mcp.callTool(name, args);
+  } catch (err) {
+    if (!/MCP HTTP 401/.test(err.message) || !(await refreshAccess())) throw err;
+    r = await state.mcp.callTool(name, args);
+  }
   refreshSoon();
   return r;
 }
@@ -325,6 +331,108 @@ function refreshSoon() {
   refreshTimer = setTimeout(() => refresh().catch(() => {}), 250);
 }
 
+// ---- OAuth 2.1 account linking (the simulator as a public client with PKCE) ----
+
+const oauth = { verifier: null, state: null, refreshToken: null };
+const PENDING_KEY = 'closed-loop-oauth-pending';
+const RESULT_KEY = 'closed-loop-oauth-result';
+const session = {
+  get: (k) => {
+    try {
+      return JSON.parse(sessionStorage.getItem(k) || 'null');
+    } catch {
+      return null;
+    }
+  },
+  set: (k, v) => {
+    try {
+      sessionStorage.setItem(k, JSON.stringify(v));
+    } catch {}
+  },
+  del: (k) => {
+    try {
+      sessionStorage.removeItem(k);
+    } catch {}
+  },
+};
+const b64url = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const redact = (t) => (t ? `${t.slice(0, 10)}…(${t.length} chars)` : t);
+
+async function oauthToken(form) {
+  const t0 = performance.now();
+  const res = await fetch('/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(form).toString() });
+  const body = await res.json();
+  const shown = { ...body, access_token: redact(body.access_token), refresh_token: redact(body.refresh_token) };
+  traffic({ kind: 'app', tag: 'OAuth', title: `POST /oauth/token (${form.grant_type})`, meta: `HTTP ${res.status} · ${Math.round(performance.now() - t0)} ms`, line: res.ok ? `scope ${body.scope} · expires in ${body.expires_in} s` : body.error, body: { request: { ...form, code: redact(form.code), code_verifier: redact(form.code_verifier), refresh_token: redact(form.refresh_token) }, response: shown } });
+  if (!res.ok) throw new Error(`OAuth: ${body.error_description || body.error}`);
+  return body;
+}
+
+function useTokens(tokens) {
+  state.mcp.token = tokens.access_token;
+  oauth.refreshToken = tokens.refresh_token;
+  $('#auth-chip').textContent = `auth: OAuth 2.1 user token · ${tokens.scope} · ${Math.round(tokens.expires_in / 60)} min`;
+  $('#link-oauth').textContent = 'Linked';
+  $('#link-oauth').disabled = true;
+}
+
+async function refreshAccess() {
+  if (!oauth.refreshToken) return false;
+  useTokens(await oauthToken({ grant_type: 'refresh_token', refresh_token: oauth.refreshToken, client_id: 'simulator' }));
+  return true;
+}
+
+async function startLinking() {
+  const link = await api(`/api/households/${state.household}/link-code`, { method: 'POST', body: {} });
+  const box = document.createElement('div');
+  box.className = 'card link-card';
+  box.innerHTML = `<span>Link code from the caregiver console: <strong class="code">${esc(link.code)}</strong> (works once, 10 minutes)</span>`;
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'btn small';
+  go.textContent = 'Open sign-in page';
+  go.addEventListener('click', guard(() => openSignIn()));
+  box.append(go);
+  caption('system', 'Account linking with OAuth 2.1 (authorization code + PKCE), the way the Alexa app links an add-on.', box);
+}
+
+async function openSignIn() {
+  oauth.verifier = b64url(crypto.getRandomValues(new Uint8Array(32)));
+  oauth.state = b64url(crypto.getRandomValues(new Uint8Array(16)));
+  const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(oauth.verifier)));
+  const p = new URLSearchParams({
+    response_type: 'code',
+    client_id: 'simulator',
+    redirect_uri: `${location.origin}/simulator/linked.html`,
+    scope: 'mcp:tools',
+    state: oauth.state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource: `${location.origin}/mcp`,
+  });
+  traffic({ kind: 'app', tag: 'OAuth', title: 'GET /oauth/authorize', meta: 'sign-in page', line: 'authorization code + PKCE (S256), resource = /mcp', body: Object.fromEntries(p) });
+  session.set(PENDING_KEY, { verifier: oauth.verifier, state: oauth.state });
+  const popup = window.open(`/oauth/authorize?${p}`, 'closed-loop-link', 'width=560,height=760');
+  if (!popup) location.assign(`/oauth/authorize?${p}`); // popup blocked: same-tab flow
+}
+
+async function finishLinking(result) {
+  const pending = session.get(PENDING_KEY);
+  session.del(PENDING_KEY);
+  if (result.error) throw new Error(`Linking ${result.error === 'access_denied' ? 'cancelled' : `failed: ${result.error}`}`);
+  if (!pending || result.state !== pending.state) throw new Error('OAuth: state mismatch');
+  const tokens = await oauthToken({ grant_type: 'authorization_code', code: result.code, code_verifier: pending.verifier, client_id: 'simulator', resource: `${location.origin}/mcp` });
+  useTokens(tokens);
+  caption('system', 'Linked. MCP calls now use the OAuth access token instead of the demo token.');
+  await state.mcp.initialize();
+  await state.mcp.listTools();
+}
+
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin || e.data?.type !== 'closed-loop-oauth') return;
+  guard(finishLinking)(e.data);
+});
+
 // ---- Wiring ----
 
 async function main() {
@@ -340,6 +448,11 @@ async function main() {
   await loadCards();
   $('#traffic-sub').textContent += ` · protocol ${state.mcp.negotiated}${state.cards.size ? ' · MCP Apps' : ''}`;
   await Promise.all([loadClock(), refresh()]);
+  const returned = session.get(RESULT_KEY);
+  if (returned) {
+    session.del(RESULT_KEY);
+    await finishLinking(returned);
+  }
   setInterval(() => {
     refresh().catch(() => {});
     loadClock().catch(() => {});
@@ -357,6 +470,7 @@ const guard = (fn) => async (...args) => {
 };
 
 $('#routine').addEventListener('click', guard(routineStart));
+$('#link-oauth').addEventListener('click', guard(startLinking));
 $('#say-form').addEventListener(
   'submit',
   guard(async (e) => {

@@ -87,6 +87,46 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Workaround:** Keep-warm schedule (EventBridge Scheduler, every 5 minutes) on the MCP function. One household's calls are sequential, so one warm instance covers it.
 - **Suggestion:** Note the new-account concurrency quota on the provisioned-concurrency page; consider SnapStart for Node.js.
 
+## 9. Two Function URLs that reference each other form a CloudFormation cycle
+
+- **Task:** Deploy the MCP endpoint and the console/simulator API as separate Lambda functions, each with a Function URL.
+- **Steps:** The MCP function needs the simulator page's origin (to allow it in the Origin check); the API function needs the MCP URL (to tell the simulator where to connect). Both as environment variables via `!GetAtt <Fn>Url.FunctionUrl`.
+- **Expected:** Two functions, two URLs.
+- **Actual:** Each function depends on the other's URL resource, which depends on the other function: a circular dependency.
+- **Severity:** Medium.
+- **Workaround:** One web function, path-routed: `/mcp` for MCP, everything else for the console API and pages (same origin, no CORS). Tick and classifier stay separate.
+- **Suggestion:** Document the pattern, or allow a Function URL to be created before its function's configuration is final (as API Gateway stages allow).
+
+## 10. A new DynamoDB Streams mapping silently skips records for its first minutes
+
+- **Task:** Trigger the classifier for every new utterance (stream event source, `StartingPosition: LATEST`, event filter on `SK` prefix `UTT#`).
+- **Steps:** Deployed, then immediately wrote utterances via the MCP server. Checked `LastProcessingResult` and logs; read the stream directly with `get-records`.
+- **Expected:** The function invoked for each new utterance once the mapping is `Enabled`.
+- **Actual:** The mapping reported `Enabled` and "No records processed" while the records were visibly in the stream. Records written in the first minutes after creation were never delivered; later ones were (the classifier then logged `review ... ThrottlingException`, as expected).
+- **Severity:** Low (cost about 20 minutes).
+- **Workaround:** Wait a few minutes after creating a mapping before testing, or use `TRIM_HORIZON` for tests.
+- **Suggestion:** Expose a "polling started at" timestamp on the mapping.
+
+## 11. SAM rejects empty parameter overrides
+
+- **Task:** Make the Bedrock model ID optional (`BedrockModelId`, default empty).
+- **Steps:** `sam deploy --parameter-overrides ... BedrockModelId=`.
+- **Expected:** The default (empty) value is used.
+- **Actual:** `Invalid value for '--parameter-overrides': BedrockModelId= is not a valid format`.
+- **Severity:** Low.
+- **Workaround:** Only pass the parameter when it is set (bash array in `scripts/deploy.sh`).
+- **Suggestion:** Accept `Key=` as an empty string.
+
+## 12. SES verification email: no resend in the v2 API, no status hint
+
+- **Task:** Verify the demo sender/recipient address in the SES sandbox.
+- **Steps:** `aws sesv2 create-email-identity`; polled `get-email-identity` (`VerificationStatus: PENDING`) for over an hour.
+- **Expected:** A way to resend the verification email from the v2 API.
+- **Actual:** `create-email-identity` fails if the identity exists; resending needs the v1 call `aws ses verify-email-identity`. Meanwhile every tick's send failed with "Email address is not verified", which revealed that needs-human notes had no retry cap (fixed: 3 attempts, logged).
+- **Severity:** Low.
+- **Workaround:** v1 `verify-email-identity` to resend.
+- **Suggestion:** Add `ResendVerification` to SESv2.
+
 ---
 
 ## Unknowns (BRIEF section 20): status

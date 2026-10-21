@@ -164,7 +164,15 @@ async function simulatorReady() {
 await newClip();
 await page.goto(`${BASE}/simulator/`);
 const dialog = page.locator('.access-dialog');
-if (await dialog.isVisible({ timeout: 4000 }).catch(() => false)) {
+// The dialog appears only after the page has checked the stored code (a cold start can take seconds), so wait
+// for whichever comes first: the dialog, or a simulator that is already connected.
+const first = await Promise.race([
+  dialog.waitFor({ state: 'visible', timeout: 90_000 }).then(() => 'dialog' as const, () => 'none' as const),
+  page
+    .waitForFunction(() => Array.from(document.querySelectorAll('#traffic .t-method')).some((e) => e.textContent?.includes('tools/list')), null, { timeout: 90_000 })
+    .then(() => 'ready' as const, () => 'none' as const),
+]);
+if (first === 'dialog') {
   console.log('\n>>> Type the access code in the browser window and press Continue. Waiting…\n');
   await dialog.waitFor({ state: 'detached', timeout: 10 * 60_000 });
 }

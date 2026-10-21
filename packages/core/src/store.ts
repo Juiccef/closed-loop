@@ -22,6 +22,8 @@ export interface Store extends ClockStore {
   getHousehold(id: HouseholdId): Promise<Household | undefined>;
   /** Creates or replaces the household and registers it for the tick. */
   putHousehold(household: Household): Promise<void>;
+  /** Sets only the given fields (undefined removes a field), so concurrent writers do not clobber each other. */
+  updateHousehold(id: HouseholdId, patch: Partial<Omit<Household, 'id'>>): Promise<void>;
   listHouseholdIds(): Promise<HouseholdId[]>;
 
   /** Newest first. */
@@ -100,6 +102,14 @@ export class MemoryStore implements Store {
   }
   async putHousehold(household: Household) {
     this.households.set(household.id, clone(household));
+  }
+  async updateHousehold(id: HouseholdId, patch: Partial<Omit<Household, 'id'>>) {
+    const h = this.households.get(id);
+    if (!h) return;
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete (h as unknown as Record<string, unknown>)[k];
+      else (h as unknown as Record<string, unknown>)[k] = clone(v);
+    }
   }
   async listHouseholdIds() {
     return [...this.households.keys()].sort();

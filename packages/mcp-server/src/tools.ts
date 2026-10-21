@@ -1,26 +1,28 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CheckinInputError,
+  DEFER_UNTIL,
+  LEDGER_STATUSES,
+  NEXT_STEPS,
+  PAUSE_SCOPES,
+  RESPONSES,
+  deferCheckin,
+  getDueCheckins,
+  getMyStatus,
+  pauseCheckins,
+  recordResponse,
+  type CheckinResponse,
+  type DeferUntil,
+  type PauseScope,
+  type Store,
+} from '@closed-loop/core';
 
 // Tool signatures are locked once an Alexa+ add-on is published, so everything here is
 // deterministic: fixed names, fixed order, bounded strings, enums instead of free text.
 
-export const RESPONSES = ['done', 'later', 'not_yet', 'no', 'unsure', 'needs_help'] as const;
-export const DEFER_UNTIL = ['in_30_min', 'in_1_hour', 'after_lunch', 'this_afternoon', 'this_evening'] as const;
-export const PAUSE_SCOPES = ['today', '24_hours'] as const;
-export const LEDGER_STATUSES = [
-  'scheduled',
-  'asked',
-  'reported_by_person',
-  'said_later',
-  'said_not_yet',
-  'declined',
-  'not_sure',
-  'no_response',
-  'needs_human_contact',
-  'acknowledged',
-] as const;
-
+export { RESPONSES, DEFER_UNTIL, PAUSE_SCOPES, LEDGER_STATUSES, NEXT_STEPS };
 const occurrenceId = z
   .string()
   .min(1)
@@ -46,9 +48,9 @@ export const outputs = {
   }),
   record_response: z.object({
     occurrenceId: z.string(),
-    recordedAs: z.enum(LEDGER_STATUSES),
+    recordedAs: z.enum([...LEDGER_STATUSES, 'not_recorded']),
     recordedWording: z.string().max(120),
-    nextStep: z.enum(['none', 'will_ask_again_later', 'family_will_be_told', 'call_emergency_services']),
+    nextStep: z.enum(NEXT_STEPS),
     calmingLine: z.string().max(200).optional(),
     say: spoken,
   }),
@@ -72,9 +74,6 @@ export const outputs = {
 } as const;
 
 export type ToolOutputs = { [K in keyof typeof outputs]: z.infer<(typeof outputs)[K]> };
-export type Response = (typeof RESPONSES)[number];
-export type DeferUntil = (typeof DEFER_UNTIL)[number];
-export type PauseScope = (typeof PAUSE_SCOPES)[number];
 
 export interface CallerContext {
   householdId: string;
@@ -85,14 +84,23 @@ export interface CheckinBackend {
   getDueCheckins(ctx: CallerContext): Promise<ToolOutputs['get_due_checkins']>;
   recordResponse(
     ctx: CallerContext,
-    input: { occurrenceId: string; response: Response; utterance?: string },
+    input: { occurrenceId: string; response: CheckinResponse; utterance?: string },
   ): Promise<ToolOutputs['record_response']>;
   deferCheckin(ctx: CallerContext, input: { occurrenceId: string; until: DeferUntil }): Promise<ToolOutputs['defer_checkin']>;
   getMyStatus(ctx: CallerContext): Promise<ToolOutputs['get_my_status']>;
   pauseCheckins(ctx: CallerContext, input: { scope: PauseScope }): Promise<ToolOutputs['pause_checkins']>;
 }
 
-export class ToolInputError extends Error {}
+/** The real backend: core check-in logic over a Store (DynamoDB in AWS, memory locally). */
+export function coreBackend(store: Store): CheckinBackend {
+  return {
+    getDueCheckins: (ctx) => getDueCheckins(store, ctx.householdId),
+    recordResponse: (ctx, input) => recordResponse(store, ctx.householdId, input),
+    deferCheckin: (ctx, input) => deferCheckin(store, ctx.householdId, input),
+    getMyStatus: (ctx) => getMyStatus(store, ctx.householdId),
+    pauseCheckins: (ctx, input) => pauseCheckins(store, ctx.householdId, input),
+  };
+}
 
 function result<T extends { say: string }>(structured: T): CallToolResult {
   return {
@@ -109,7 +117,7 @@ async function guarded<T extends { say: string }>(fn: () => Promise<T>): Promise
   try {
     return result(await fn());
   } catch (err) {
-    if (err instanceof ToolInputError) return failure(err.message);
+    if (err instanceof CheckinInputError) return failure(err.message);
     throw err;
   }
 }

@@ -20,11 +20,14 @@ export interface Household {
   createdAt: string;
   /** Set by pause_checkins or the console. No prompts and no alerts before this instant. */
   pausedUntil?: string;
+  pausedAt?: string;
   pausedBy?: 'person' | 'caregiver';
   /** Demo mode turns quiet hours off. */
   demoMode: boolean;
   /** Last local date the tick fully processed; lets the tick catch up after a clock jump. */
   lastProcessedDate?: string;
+  /** planExpiresAt of the consent whose expiry was already logged, so the notice is written once. */
+  expiryNoticeFor?: string;
 }
 
 export interface ConsentRecord {
@@ -91,7 +94,7 @@ export type OccurrenceState = (typeof OCCURRENCE_STATES)[number];
 /** Why the loop stayed open when the window closed. Drives honest email and ledger wording. */
 export type OpenReason = 'not_reached' | 'no_answer' | 'said_later' | 'not_sure' | 'declined';
 
-export type AlertStatus = 'none' | 'pending' | 'sent' | 'suppressed_cap' | 'waiting_quiet_hours' | 'failed';
+export type AlertStatus = 'none' | 'pending' | 'sending' | 'sent' | 'suppressed_cap' | 'waiting_quiet_hours' | 'failed' | 'cancelled';
 
 export interface Occurrence {
   householdId: HouseholdId;
@@ -119,7 +122,10 @@ export interface Occurrence {
   alertStatus: AlertStatus;
   alertedAt?: string;
   alertAttempts?: number;
+  alertClaimedAt?: string;
   needsHumanNoteStatus?: AlertStatus;
+  needsHumanCrisis?: boolean;
+  needsHumanClaimedAt?: string;
   ackedAt?: string;
   ackedBy?: string;
   reportedLate?: boolean;

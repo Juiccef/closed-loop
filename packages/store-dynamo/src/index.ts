@@ -103,6 +103,34 @@ export class DynamoStore implements Store {
       this.put({ ...keys.registry(h.id), T: 'registry', householdId: h.id }),
     ]);
   }
+  async updateHousehold(id: HouseholdId, patch: Partial<Omit<Household, 'id'>>) {
+    const sets: string[] = [];
+    const removes: string[] = [];
+    const names: Record<string, string> = {};
+    const values: Record<string, unknown> = {};
+    Object.entries(patch).forEach(([k, v], i) => {
+      names[`#f${i}`] = k;
+      if (v === undefined) removes.push(`#f${i}`);
+      else {
+        sets.push(`#f${i} = :v${i}`);
+        values[`:v${i}`] = v;
+      }
+    });
+    if (!sets.length && !removes.length) return;
+    const expr = [sets.length ? `SET ${sets.join(', ')}` : '', removes.length ? `REMOVE ${removes.join(', ')}` : ''].join(' ').trim();
+    await this.doc.send(
+      new UpdateCommand({
+        TableName: this.table,
+        Key: keys.household(id),
+        UpdateExpression: expr,
+        ConditionExpression: 'attribute_exists(PK)',
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: Object.keys(values).length ? values : undefined,
+      }),
+    ).catch((err) => {
+      if (!(err instanceof ConditionalCheckFailedException)) throw err;
+    });
+  }
   async listHouseholdIds() {
     const items = await this.queryAll({
       KeyConditionExpression: 'PK = :pk',

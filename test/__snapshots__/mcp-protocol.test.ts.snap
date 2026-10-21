@@ -1,0 +1,359 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapshot) 1`] = `
+[
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Returns the daily check-ins that are open right now for this household, with the exact question wording the family wrote. Ask each returned prompt once, in order, then record the answer with record_response. Do not repeat a question in the same turn.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_due_checkins",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "checkins": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "allowedResponses": {
+                "items": {
+                  "enum": [
+                    "done",
+                    "later",
+                    "not_yet",
+                    "no",
+                    "unsure",
+                    "needs_help",
+                  ],
+                  "type": "string",
+                },
+                "type": "array",
+              },
+              "isFollowUp": {
+                "type": "boolean",
+              },
+              "label": {
+                "maxLength": 80,
+                "type": "string",
+              },
+              "occurrenceId": {
+                "type": "string",
+              },
+              "prompt": {
+                "maxLength": 200,
+                "type": "string",
+              },
+            },
+            "required": [
+              "occurrenceId",
+              "label",
+              "prompt",
+              "allowedResponses",
+              "isFollowUp",
+            ],
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "paused": {
+          "type": "boolean",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+      },
+      "required": [
+        "checkins",
+        "paused",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Get due check-ins",
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. Read back the returned "say" text; if a calmingLine is returned, say it and do not ask further questions.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "occurrenceId": {
+          "description": "The occurrenceId returned by get_due_checkins.",
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9#:_-]+$",
+          "type": "string",
+        },
+        "response": {
+          "enum": [
+            "done",
+            "later",
+            "not_yet",
+            "no",
+            "unsure",
+            "needs_help",
+          ],
+          "type": "string",
+        },
+        "utterance": {
+          "description": "The person's own words, at most 200 characters.",
+          "maxLength": 200,
+          "type": "string",
+        },
+      },
+      "required": [
+        "occurrenceId",
+        "response",
+      ],
+      "type": "object",
+    },
+    "name": "record_response",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "calmingLine": {
+          "maxLength": 200,
+          "type": "string",
+        },
+        "nextStep": {
+          "enum": [
+            "none",
+            "will_ask_again_later",
+            "family_will_be_told",
+            "call_emergency_services",
+          ],
+          "type": "string",
+        },
+        "occurrenceId": {
+          "type": "string",
+        },
+        "recordedAs": {
+          "enum": [
+            "scheduled",
+            "asked",
+            "reported_by_person",
+            "said_later",
+            "said_not_yet",
+            "declined",
+            "not_sure",
+            "no_response",
+            "needs_human_contact",
+            "acknowledged",
+            "not_recorded",
+          ],
+          "type": "string",
+        },
+        "recordedWording": {
+          "maxLength": 120,
+          "type": "string",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+      },
+      "required": [
+        "occurrenceId",
+        "recordedAs",
+        "recordedWording",
+        "nextStep",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Record a check-in answer",
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Use when the person says they will do it later. Moves the check-in to a later time today and it will be asked again then.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "occurrenceId": {
+          "description": "The occurrenceId returned by get_due_checkins.",
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9#:_-]+$",
+          "type": "string",
+        },
+        "until": {
+          "enum": [
+            "in_30_min",
+            "in_1_hour",
+            "after_lunch",
+            "this_afternoon",
+            "this_evening",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "occurrenceId",
+        "until",
+      ],
+      "type": "object",
+    },
+    "name": "defer_checkin",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "deferredUntilLocal": {
+          "maxLength": 5,
+          "type": "string",
+        },
+        "occurrenceId": {
+          "type": "string",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+      },
+      "required": [
+        "occurrenceId",
+        "deferredUntilLocal",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Ask again later",
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "description": "Tells the person, in plain words, how today's check-ins stand and which family contacts receive updates, so they know what is shared.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {},
+      "type": "object",
+    },
+    "name": "get_my_status",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "date": {
+          "maxLength": 10,
+          "type": "string",
+        },
+        "open": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "paused": {
+          "type": "boolean",
+        },
+        "reported": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+        "sharedWith": {
+          "items": {
+            "maxLength": 60,
+            "type": "string",
+          },
+          "type": "array",
+        },
+      },
+      "required": [
+        "date",
+        "reported",
+        "open",
+        "sharedWith",
+        "paused",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Today's check-in summary",
+  },
+  {
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "Pauses all check-ins for today or for 24 hours. Always honor this request without asking why. The family sees the pause in their next summary.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "scope": {
+          "enum": [
+            "today",
+            "24_hours",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "scope",
+      ],
+      "type": "object",
+    },
+    "name": "pause_checkins",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "pausedUntilLocal": {
+          "maxLength": 16,
+          "type": "string",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+      },
+      "required": [
+        "pausedUntilLocal",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Pause check-ins",
+  },
+]
+`;

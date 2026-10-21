@@ -63,15 +63,19 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Workaround:** A self-built simulated client that speaks real MCP over Streamable HTTP, plus MCP Inspector, as the FAQ allows.
 - **Suggestion:** A public, rate-limited web simulator or a recorded-traffic conformance test for hackathon entrants.
 
-## 7. New account: Bedrock blocked by account verification
+## 7. New account: Bedrock unusable (verification, then zero daily token quotas)
 
 - **Task:** Phase 0 spike 4: confirm Bedrock access with a Converse call.
-- **Steps:** Signed in with `aws login` (new in AWS CLI 2.3x; uses console credentials, no access keys). Listed models: Nova Micro/Lite and Claude Haiku 5.5 are ACTIVE in us-east-1. Called `bedrock-runtime converse` on `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5`.
+- **Steps:** Signed in with `aws login` (new in AWS CLI 2.3x; uses console credentials, no access keys). Listed models: Nova Micro/Lite/2 Lite, Claude Haiku 5.5, GPT-5.6, gpt-oss are ACTIVE in us-east-1. Called `bedrock-runtime converse` with `maxTokens` 5–64.
 - **Expected:** A one-word reply, or a model-access error that says which form to fill in.
-- **Actual:** `AccessDeniedException: Your account is currently being verified. Verification normally takes less than 2 hours.` DynamoDB, Lambda, SES, Scheduler and CloudFormation all work on the same account at the same moment.
-- **Severity:** High for a 3-day hackathon (blocks the Bedrock half of the build on day 1).
-- **Workaround:** Build the rule-based planner and classifier first (they are required as fallbacks anyway); retry Bedrock later.
-- **Suggestion:** Show verification status in the console or via an API, and say in the error which services are affected.
+- **Actual:**
+  1. First attempt (about 22:10 ET): `AccessDeniedException: Your account is currently being verified. Verification normally takes less than 2 hours.`
+  2. About 30 minutes later: Nova Micro, Nova Lite, Nova 2 Lite, gpt-oss-20b and gpt-oss-120b return `ThrottlingException: Too many tokens per day` on the first call. Service Quotas shows "Model invocation max tokens per day" = **0** for each Nova model, marked **not adjustable**. Claude Haiku 5.5 and GPT-5.6 return `AccessDeniedException: ... is not available for this account ... contact AWS Sales`.
+  3. The only non-zero inference quotas are AI21 Jamba 1.5 (1 request/min) and GPT-5.6 on the `bedrock-mantle` endpoint (but Converse says those models are not available to the account).
+  - DynamoDB, Lambda, SES, Scheduler and CloudFormation all work on the same account at the same moment.
+- **Severity:** High for a 3-day hackathon (blocks the Bedrock half of the build and puts the AWS Builder mini challenge at risk).
+- **Workaround:** Rule-based planner and classifier first (required as fallbacks anyway), Bedrock behind an interface; request a quota increase through AWS Support.
+- **Suggestion:** A "Throttling: tokens per day" error on the very first call should say the quota is 0 and how to raise it. Non-adjustable quotas of 0 should be explained in the console, with expected timing if they lift automatically.
 
 ## 8. New account: Lambda concurrency quota of 10 rules out provisioned concurrency
 
@@ -98,5 +102,5 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 | Tool creates native reminder | Not documented | Entry 4 |
 | `_meta.ui` / MCP Apps | Documented: tool result `_meta.ui` with `resourceUri` (e.g. `ui://...`), `invoking`, `invoked`; data-only fallback | Lifecycle page. ext-apps with SDK 1.x: not yet tested |
 | Elicitation | Alexa+ uses MCP elicitation when it cannot fill missing details itself | Lifecycle page. We still do not use server-initiated elicitation |
-| Bedrock model IDs | Listed ACTIVE in us-east-1: `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5` (inference profiles) | `list-inference-profiles`. Invocation blocked until account verification (entry 7). Prices: to check |
+| Bedrock model IDs | Listed ACTIVE in us-east-1: `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5` (inference profiles) | `list-inference-profiles`. Invocation blocked: daily token quota 0 / not available for account (entry 7). Prices: to check |
 | Crisis wording policy | "Redirect apparent references to personal crises or suicidal intent to emergency services or crisis hotlines." | Policy Requirements, Sec. 13. Added 988 line for self-harm wording |

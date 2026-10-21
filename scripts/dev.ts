@@ -37,6 +37,8 @@ const handler = createWebHandler(
     publicConfig: () => ({ mode: 'local', householdId: 'demo', localAccessCode: ADMIN_TOKEN }),
     demoConfig: (origin) => ({ mcpUrl: `${origin}/mcp`, mcpToken: MCP_TOKEN, householdId: 'demo', planner: 'rules', mode: 'local' }),
     staticFile: async (path) => {
+      // Dev only: axe-core for the accessibility audit (docs/accessibility.md).
+      if (path === '/__dev/axe.min.js') return { body: await readFile(join(APPS, '..', 'node_modules', 'axe-core', 'axe.min.js'), 'utf8'), type: 'text/javascript' };
       const f = staticPathToFile(path);
       if (!f) return undefined;
       try {

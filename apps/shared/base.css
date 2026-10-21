@@ -15,6 +15,7 @@
   --ochre-soft: #f3e3c2;
   --terra: #b2441f;
   --terra-soft: #f6dccf;
+  --on-terra: #ffffff;
   --slate: #3d5a80;
   --focus: #0b57d0;
   --code-bg: #182022;
@@ -42,6 +43,7 @@
     --ochre-soft: #3a2f1b;
     --terra: #f08a66;
     --terra-soft: #3d2219;
+    --on-terra: #1b0f0b;
     --slate: #9db7da;
     --focus: #8ab4ff;
     --code-bg: #0c1112;
@@ -62,6 +64,7 @@
   --ochre-soft: #3a2f1b;
   --terra: #f08a66;
   --terra-soft: #3d2219;
+  --on-terra: #1b0f0b;
   --slate: #9db7da;
   --focus: #8ab4ff;
   --code-bg: #0c1112;
@@ -190,7 +193,7 @@ a {
 .btn.warn {
   background: var(--terra);
   border-color: var(--terra);
-  color: #fff;
+  color: var(--on-terra);
 }
 .btn.small {
   font-size: 0.85rem;

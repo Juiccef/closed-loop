@@ -259,7 +259,7 @@
 .routine .btn {
   background: var(--terra);
   border-color: var(--terra);
-  color: #fff;
+  color: var(--on-terra);
 }
 .hint {
   font-size: 0.8rem;
@@ -292,7 +292,7 @@
 #mic[aria-pressed='true'] {
   background: var(--terra);
   border-color: var(--terra);
-  color: #fff;
+  color: var(--on-terra);
 }
 
 .chips {
@@ -395,7 +395,7 @@
   margin-top: 0.6rem;
   background: var(--terra);
   border-color: var(--terra);
-  color: #fff;
+  color: var(--on-terra);
   position: relative;
   z-index: 1;
 }

@@ -22,6 +22,7 @@
     </header>
 
     <main class="sim-grid">
+      <h1 class="visually-hidden">Closed Loop: simulated Alexa+ client</h1>
       <section class="panel convo" aria-labelledby="convo-title">
         <div class="panel-head">
           <h2 id="convo-title">Conversation</h2>
@@ -36,7 +37,7 @@
           <span class="orb-label" id="orb-label">Waiting for someone to start a check-in</span>
         </div>
 
-        <ol class="captions" id="captions" aria-live="polite" aria-relevant="additions" aria-label="Conversation transcript"></ol>
+        <ol class="captions" id="captions" aria-live="polite" aria-relevant="additions" aria-label="Conversation transcript" tabindex="0"></ol>
 
         <div class="routine">
           <button id="routine" class="btn" type="button">
@@ -101,7 +102,7 @@
           <h2 id="traffic-title">MCP traffic</h2>
           <span class="sub" id="traffic-sub">POST /mcp · Streamable HTTP · stateless</span>
         </div>
-        <ol class="traffic-list" id="traffic" aria-label="Requests and responses, newest first"></ol>
+        <ol class="traffic-list" id="traffic" aria-label="Requests and responses, newest first" tabindex="0"></ol>
       </section>
     </main>
 

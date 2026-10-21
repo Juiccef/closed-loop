@@ -72,7 +72,7 @@ function traffic(entry) {
     if (entry.phase === 'request') {
       const li = document.createElement('li');
       const name = entry.request.params?.name ? ` ${entry.request.params.name}` : '';
-      li.innerHTML = `<details><summary><span class="t-kind">MCP</span><span class="t-method">${esc(entry.method)}${esc(name)}</span><span class="t-meta">sending…</span></summary><pre><span class="lbl">→ request</span>\n${highlight(entry.request)}</pre></details>`;
+      li.innerHTML = `<details><summary><span class="t-kind">MCP</span><span class="t-method">${esc(entry.method)}${esc(name)}</span><span class="t-meta">sending…</span></summary><pre tabindex="0"><span class="lbl">→ request</span>\n${highlight(entry.request)}</pre></details>`;
       list.prepend(li);
       pending.set(entry.request, li);
       return;
@@ -90,7 +90,7 @@ function traffic(entry) {
   }
   const li = document.createElement('li');
   const cls = entry.kind === 'planner' ? 'planner' : entry.kind === 'tick' ? 'tick' : 'err';
-  li.innerHTML = `<details><summary><span class="t-kind ${cls}">${esc(entry.tag)}</span><span class="t-method">${esc(entry.title)}</span><span class="t-meta">${esc(entry.meta || '')}</span>${entry.line ? `<span class="t-line">${esc(entry.line)}</span>` : ''}</summary><pre>${highlight(entry.body)}</pre></details>`;
+  li.innerHTML = `<details><summary><span class="t-kind ${cls}">${esc(entry.tag)}</span><span class="t-method">${esc(entry.title)}</span><span class="t-meta">${esc(entry.meta || '')}</span>${entry.line ? `<span class="t-line">${esc(entry.line)}</span>` : ''}</summary><pre tabindex="0">${highlight(entry.body)}</pre></details>`;
   list.prepend(li);
 }
 

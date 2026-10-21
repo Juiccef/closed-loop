@@ -128,6 +128,16 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Workaround:** v1 `verify-email-identity` to resend.
 - **Suggestion:** Add `ResendVerification` to SESv2.
 
+## 13. OAuth requirements are spread across three pages and disagree on client authentication
+
+- **Task:** Implement account linking (OAuth 2.1) the way Alexa+ expects.
+- **Steps:** Read "MCP Toolkit Authentication", "Category SDK MCP Authentication", and "Account Linking for MCP Add-ons".
+- **Expected:** One checklist.
+- **Actual:** Scopes (`mcp:service`, `mcp:tools`, `mcp:resources`), "no refresh token for client credentials", and `expires_in` ≤ 3600 are on the authentication page; "refresh token with every access token", "resource is not sent on refresh", "401 or 403 when a tool is called without a valid token", and the redirect URI source (`alexa-ai configure-account-linking`) are on the account linking page. Client authentication is "HTTP Basic" in one place, "HTTP Basic or POST body" in the checklist, and the token-request example shows `client_id` in the body with no secret at all. No page says how to mark a tool as user-level versus service-level.
+- **Severity:** Medium.
+- **Workaround:** Accept HTTP Basic and POST-body credentials (and PKCE-only public clients); treat every tool call as user-level and answer service tokens with the documented 401 body.
+- **Suggestion:** One consolidated OAuth checklist with a complete example of each request, including how the client authenticates.
+
 ---
 
 ## Unknowns (BRIEF section 20): status
@@ -138,7 +148,7 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 | Other timeouts, retries | Not documented | Searched create + lifecycle pages |
 | Tool-count / schema limits | Not documented (only store listing limits) | Create page |
 | Tool signature lock | "Alexa+ refreshes tool information only on deployment" | Create page; "locked" wording not found |
-| User identity header/claim | Not documented on auth page; refers to Account Linking page | Unverified, to read |
+| User identity header/claim | Alexa+ sends the access token your server issued (Bearer header); identity is whatever your token encodes. We encode the household in `sub` and check `aud` = `/mcp` | Account Linking page; implemented in `packages/mcp-server/src/oauth.ts` |
 | Routines invoke an add-on | Not documented | Entry 4 |
 | Tool creates native reminder | Not documented | Entry 4 |
 | `_meta.ui` / MCP Apps | Alexa+ shows `_meta.ui` (`resourceUri`, `invoking`, `invoked`) in the **tool result**; the MCP Apps spec (SEP-1865) puts `_meta.ui.resourceUri` on the **tool definition**. We set both. | Verified: SDK 1.32.1 `registerTool` accepts `_meta`, `registerResource` serves `text/html;profile=mcp-app`, and `initialize` accepts `capabilities.extensions['io.modelcontextprotocol/ui']`. Rendering in real Alexa+: untested (partner-only) |

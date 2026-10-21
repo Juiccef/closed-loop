@@ -33,17 +33,18 @@ Closed Loop is a self-hosted MCP server for an Alexa+ add-on, plus a caregiver c
 - **Handles distress carefully:** confusion gets the family's own calming line and no more questions, plus a neutral note to family; emergency wording gets one fixed line, "If this is an emergency, please call 911 now" (and 988 for self-harm wording).
 - **Puts the family in charge, with consent:** check-ins in their own words (linted so no drug names or doses are read aloud), who gets emailed, quiet hours, a daily email cap, plan expiry, recorded consent that stops everything when revoked, and delete-all-data.
 - **Shows results as an MCP App card** (`ui://` resource, SEP-1865) using Alexa+'s documented `_meta.ui` placement.
+- **Links accounts with OAuth 2.1** the way Alexa+ add-ons do: authorization code with PKCE for the person's data, client credentials for service-level discovery, rotating refresh tokens, and a one-time link code from the caregiver console.
 
 It is deliberately not an emergency system, and it says so on every surface. MCP add-ons have no documented way to speak first, so turns start with the person, a household routine, or (in the demo) the simulator.
 
 ### How we built it
 
-- **MCP server:** TypeScript on `@modelcontextprotocol/sdk` 1.32.1, stateless Streamable HTTP via the Web-standard transport. Accepts both `2025-03-26` and `2025-11-25` handshakes, validates Origin, returns 401 without `WWW-Authenticate` (per Alexa+'s auth docs) and serves RFC 9728 metadata. Five tools with enums and bounded strings, `structuredContent` plus text, a tools/list snapshot test.
+- **MCP server:** TypeScript on `@modelcontextprotocol/sdk` 1.32.1, stateless Streamable HTTP via the Web-standard transport. Accepts both `2025-03-26` and `2025-11-25` handshakes, validates Origin, returns 401 without `WWW-Authenticate` (per Alexa+'s auth docs), serves RFC 9728 metadata, and runs its own OAuth 2.1 authorization server built to Alexa+'s account-linking requirements. Five tools with enums and bounded strings, `structuredContent` plus text, a tools/list snapshot test.
 - **State machine and ladder** in a pure, tested core: conditional writes on a version attribute so overlapping ticks never double-send, an atomic daily alert cap, and honest "open reasons" (not reached vs asked with no answer).
 - **AWS:** Lambda (arm64) behind a Function URL, DynamoDB single table with TTL and Streams, EventBridge Scheduler (minute tick plus keep-warm), SES, Bedrock (Converse with tool use) for the planner and an asynchronous second opinion, all in one SAM template.
 - **Simulated Alexa+ client:** a browser page that is a real MCP client and shows every JSON-RPC message, a planner hop, the MCP App card, and a simulated clock that moves the whole system.
 - **Accessible caregiver console:** large type (Atkinson Hyperlegible), keyboard-first, status by shape and words, zero axe-core violations in light and dark.
-- **Tests:** 82 unit and protocol tests, a 20-utterance fail-closed eval, an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
+- **Tests:** 96 unit, protocol, and OAuth tests, a 20-utterance fail-closed eval, an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
 
 ### Challenges we ran into
 
@@ -65,7 +66,7 @@ Most of the work in a "reminder" product is what happens after the question: hon
 
 ### What's next
 
-A consent-gated proactive primitive in Alexa+ would let the add-on start the morning check-in itself. Then: OAuth 2.1 with PKCE for account linking, a weekly Bedrock digest for families, and multi-household support.
+A consent-gated proactive primitive in Alexa+ would let the add-on start the morning check-in itself. Then: a weekly Bedrock digest for families, multi-household support, and a calibrated decision model (such as TypeSafe's Jev) as a second-opinion classifier.
 
 ## Built with
 
@@ -92,7 +93,7 @@ Full per-tool answers (what it was used for, what worked, what needs work, onboa
 
 ## Friction log (optional bonus)
 
-12 entries in `FRICTION_LOG.md`, each with task, steps, expected vs actual, severity, workaround, and suggestion: protocol version conflict, 401 header guidance, undocumented client headers, no proactive primitive, broken doc index URLs, partner-only tooling, Bedrock zero quota on a new account, Lambda concurrency and cold starts, a CloudFormation cycle between Function URLs, a DynamoDB Streams mapping start-up gap, SAM empty parameters, and SES verification resend.
+13 entries in `FRICTION_LOG.md`, each with task, steps, expected vs actual, severity, workaround, and suggestion: protocol version conflict, 401 header guidance, undocumented client headers, no proactive primitive, broken doc index URLs, partner-only tooling, Bedrock zero quota on a new account, Lambda concurrency and cold starts, a CloudFormation cycle between Function URLs, a DynamoDB Streams mapping start-up gap, SAM empty parameters, SES verification resend, and OAuth requirements split across pages.
 
 ## Open Source mini challenge
 

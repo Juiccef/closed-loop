@@ -115,9 +115,16 @@ Every tool returns `structuredContent` plus a short text fallback. Signatures ar
 
 - `initialize` accepts both `2025-03-26` (Alexa's documented lifecycle example) and `2025-11-25` (the version its overview links), and answers with the one the client asked for.
 - `Origin` is validated: same origin and listed origins allowed, requests with no Origin allowed, anything else **403**.
-- No or wrong bearer token → **401** with **no** `WWW-Authenticate` header (Alexa+'s authentication page lists that header as not supported). OAuth discovery is served at `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server` (S256 PKCE, `client_credentials`). The OAuth endpoints themselves are stubs; this build uses a static bearer token.
+- No or wrong bearer token → **401** with **no** `WWW-Authenticate` header (Alexa+'s authentication page lists that header as not supported). Discovery is served at `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server`.
 - `GET /mcp` → 405. Oversize input and enum violations are rejected. `tools/list` is byte-identical across calls and protocol versions (snapshot test).
 - A missing or partial `Accept` header is completed before the SDK sees it (the SDK returns 406 otherwise; Alexa's client headers are undocumented).
+
+**Account linking (OAuth 2.1), as the Alexa+ add-on docs describe it:**
+
+- **Authorization code + PKCE** for user-level access (`mcp:tools`, `mcp:resources`). `S256` is required, `resource` must be this server's `/mcp` URI, redirect URIs are matched exactly, and the response carries `iss`. To link, the person enters a one-time **link code** that the family creates in the caregiver console (8 characters, single use, 10 minutes, stored only as a hash).
+- **Client credentials** for service-level access (`mcp:service`): it can `initialize` and list tools, but a tool call gets Alexa's documented `401 {"error":"unauthorized","message":"Access token required to use this tool."}`. No refresh token is issued.
+- **Tokens:** JWT access tokens (HS256, at most 3600 s, audience = the `/mcp` URI) and a rotating refresh token with every user access token; refresh tokens can be revoked (RFC 7009) or unlinked from the console. Static client registration (Alexa+ does not support DCR); clients authenticate with HTTP Basic or POST-body credentials.
+- **Two clients are registered:** `alexa-plus` (confidential; redirect URIs from `alexa-ai configure-account-linking` go in `ALEXA_REDIRECT_URIS`) and `simulator` (public, PKCE only, same-origin redirect). The simulator's **Link with OAuth 2.1** button runs the full flow and then uses the OAuth token for its MCP calls. The static demo bearer token still works for MCP Inspector and scripts.
 
 ## Safety and honesty, by design
 
@@ -151,7 +158,7 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 82 tests: state machine, ladder, safety eval, stores, MCP protocol, classifier
+npm test            # 96 tests: state machine, ladder, safety eval, stores, MCP protocol, OAuth, classifier
 npm run typecheck
 npm run e2e         # replays the demo against a running deployment and checks the ledger
 ```
@@ -163,7 +170,7 @@ Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB tab
 - **No proactive speech.** No documented way exists for an MCP add-on to start a conversation, set a native reminder, or be invoked by a routine. That is the single most important missing primitive for this use case (see [FRICTION_LOG.md](FRICTION_LOG.md) #4 and the feature request in [PRODUCT_FEEDBACK.md](PRODUCT_FEEDBACK.md)).
 - **Not tested against real Alexa+.** Add-on tooling is partner-only. The server follows Alexa's published requirements and is exercised by three different MCP clients.
 - **Bedrock on this account.** The new AWS account used for the hackathon has a Bedrock daily token quota of 0 (FRICTION_LOG #7). The Bedrock planner and classifier are wired, deployed, and pass Bedrock's request validation; until the quota is raised they fall back to rules and say so.
-- **Auth.** A static bearer token stands in for OAuth 2.1 with PKCE. Discovery metadata is served; the authorization server is not implemented.
+- **Auth.** OAuth 2.1 account linking is implemented and tested against the published Alexa+ requirements, but not against Alexa's real linking service (partner-only). Access tokens are self-contained JWTs, so unlinking stops refreshes immediately and existing access ends within an hour.
 - **Cold starts** of the full web function are about 0.9 s (0.61 s init plus a first request that creates the day's records); warm calls take 4–28 ms server-side. A keep-warm schedule keeps one instance ready because new accounts cannot use provisioned concurrency (FRICTION_LOG #8).
 
 ## Repository layout

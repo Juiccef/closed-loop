@@ -15,10 +15,11 @@ const marks = JSON.parse(await readFile(join(OUT, 'marks.json'), 'utf8')) as {
 const probe = (file: string) => Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' }).trim());
 
 // Recordings drop frames under load, so a clip's video timeline is slightly shorter than wall-clock time.
-// Map wall-clock marks onto each clip's own timeline linearly.
+// Map wall-clock marks onto each clip's own timeline linearly. A file longer than wall time only has a frozen
+// tail (the recorder flushing after the page closes), so it is never stretched.
 const scenes = marks.clips.flatMap((clip) => {
   const file = join(OUT, clip.file);
-  const scale = probe(file) / clip.wall;
+  const scale = Math.min(1, probe(file) / clip.wall);
   return clip.scenes.map((s) => ({ n: s.n, file, start: s.start * scale, end: s.end * scale, scale }));
 });
 

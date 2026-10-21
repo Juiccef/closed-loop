@@ -12,7 +12,7 @@ export interface McpHttpConfig {
   bearerTokens: Record<string, string>;
   /** Browser origins allowed to call the endpoint. Requests with no Origin header are allowed (server-to-server). */
   allowedOrigins: string[];
-  /** Canonical URI of the MCP endpoint, advertised in Protected Resource Metadata. */
+  /** Canonical URI of the MCP endpoint, advertised in Protected Resource Metadata. Derived from the request when empty. */
   resourceUrl: string;
   /**
    * Alexa+ docs list "WWW-Authenticate headers in 401 responses" as not supported, while the MCP spec
@@ -71,7 +71,7 @@ function origin(url: URL): string {
 
 function protectedResourceMetadata(config: McpHttpConfig, url: URL) {
   return {
-    resource: config.resourceUrl,
+    resource: config.resourceUrl || `${origin(url)}${config.basePath ?? ''}/mcp`,
     authorization_servers: [origin(url)],
     scopes_supported: ['checkins'],
     bearer_methods_supported: ['header'],

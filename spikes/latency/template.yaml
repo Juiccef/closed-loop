@@ -1,0 +1,45 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Closed Loop Phase 0 latency spike (delete after measuring)
+
+Parameters:
+  McpBearerToken:
+    Type: String
+    NoEcho: true
+
+Resources:
+  SpikeTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+
+  SpikeMcpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../../dist/spike-latency/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 2048
+      Timeout: 10
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref SpikeTable
+          MCP_BEARER_TOKEN: !Ref McpBearerToken
+          WARM_AT_INIT: '1'
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref SpikeTable }
+      FunctionUrlConfig:
+        AuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Value: !GetAtt SpikeMcpFunctionUrl.FunctionUrl
+  FunctionName:
+    Value: !Ref SpikeMcpFunction

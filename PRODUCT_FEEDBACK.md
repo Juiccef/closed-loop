@@ -25,7 +25,12 @@ One section per tool, API, or SDK used. Filled in as the build proceeds; entries
 - **Onboarding:** _to add_
 - **Would build again:** _to add_
 
-## AWS Lambda: _pending_
+## AWS Lambda (Function URLs, nodejs22.x, arm64)
+
+- **Used for:** MCP endpoint (Function URL, payload v2.0). More to come: API, tick, planner.
+- **What worked:** Function URL plus a 40-line adapter to Web `Request`/`Response` ran the MCP SDK's Web-standard transport unchanged. Warm round trips are 9 ms p50 / 33 ms p95 server-side with a DynamoDB read. SAM created the two URL permissions (`InvokeFunctionUrl` and public `InvokeFunction`) automatically.
+- **What needs work:** Cold start 561–640 ms even at 2048 MB with ESM and init-time warm-up, over Alexa+'s 500 ms limit. New accounts get 10 concurrent executions, which blocks provisioned concurrency. See FRICTION_LOG entry 8.
+- **Would build again:** Yes, with a keep-warm schedule.
 ## Amazon DynamoDB: _pending_
 ## Amazon EventBridge Scheduler: _pending_
 ## Amazon SES: _pending_

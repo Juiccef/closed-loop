@@ -63,6 +63,26 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Workaround:** A self-built simulated client that speaks real MCP over Streamable HTTP, plus MCP Inspector, as the FAQ allows.
 - **Suggestion:** A public, rate-limited web simulator or a recorded-traffic conformance test for hackathon entrants.
 
+## 7. New account: Bedrock blocked by account verification
+
+- **Task:** Phase 0 spike 4: confirm Bedrock access with a Converse call.
+- **Steps:** Signed in with `aws login` (new in AWS CLI 2.3x; uses console credentials, no access keys). Listed models: Nova Micro/Lite and Claude Haiku 5.5 are ACTIVE in us-east-1. Called `bedrock-runtime converse` on `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5`.
+- **Expected:** A one-word reply, or a model-access error that says which form to fill in.
+- **Actual:** `AccessDeniedException: Your account is currently being verified. Verification normally takes less than 2 hours.` DynamoDB, Lambda, SES, Scheduler and CloudFormation all work on the same account at the same moment.
+- **Severity:** High for a 3-day hackathon (blocks the Bedrock half of the build on day 1).
+- **Workaround:** Build the rule-based planner and classifier first (they are required as fallbacks anyway); retry Bedrock later.
+- **Suggestion:** Show verification status in the console or via an API, and say in the error which services are affected.
+
+## 8. New account: Lambda concurrency quota of 10 rules out provisioned concurrency
+
+- **Task:** Phase 0 spike 3: MCP round trip under 500 ms including cold starts.
+- **Steps:** Deployed the real MCP handler (SDK 1.32.1, 756 KB bundle, AWS SDK from the runtime) on a Function URL with one DynamoDB `GetItem`. Forced cold starts by changing an environment variable. Read `REPORT` lines in CloudWatch Logs.
+- **Expected:** Cold start well under 500 ms; provisioned concurrency available if not.
+- **Actual:** Warm: p50 9 ms, p95 33 ms server-side. Cold at 1024 MB, CJS: init 384–484 ms + first invoke 360–552 ms. Cold at 2048 MB, ESM, DynamoDB connection opened at init (top-level await): init 471–550 ms + first invoke 90 ms = 561–640 ms. `get-account-settings` reports `ConcurrentExecutions: 10`; provisioned concurrency needs 10 unreserved, so none can be configured.
+- **Severity:** Medium.
+- **Workaround:** Keep-warm schedule (EventBridge Scheduler, every 5 minutes) on the MCP function. One household's calls are sequential, so one warm instance covers it.
+- **Suggestion:** Note the new-account concurrency quota on the provisioned-concurrency page; consider SnapStart for Node.js.
+
 ---
 
 ## Unknowns (BRIEF section 20): status
@@ -78,5 +98,5 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 | Tool creates native reminder | Not documented | Entry 4 |
 | `_meta.ui` / MCP Apps | Documented: tool result `_meta.ui` with `resourceUri` (e.g. `ui://...`), `invoking`, `invoked`; data-only fallback | Lifecycle page. ext-apps with SDK 1.x: not yet tested |
 | Elicitation | Alexa+ uses MCP elicitation when it cannot fill missing details itself | Lifecycle page. We still do not use server-initiated elicitation |
-| Bedrock model IDs/prices | Pending AWS access | |
+| Bedrock model IDs | Listed ACTIVE in us-east-1: `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5` (inference profiles) | `list-inference-profiles`. Invocation blocked until account verification (entry 7). Prices: to check |
 | Crisis wording policy | "Redirect apparent references to personal crises or suicidal intent to emergency services or crisis hotlines." | Policy Requirements, Sec. 13. Added 988 line for self-harm wording |

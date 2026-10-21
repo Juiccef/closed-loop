@@ -184,6 +184,16 @@ describe('closing the loop: tick, ladder, email', () => {
     expect(ledgerLine(occ!)).toBe('no response (asked, no answer) · family emailed');
   });
 
+  it('logs what was sent by contact name, never by address', async () => {
+    const { store, tick } = await demo();
+    setLocal('2026-10-19 14:01');
+    await tick();
+    const [log] = await store.listMailLog(H, 5);
+    expect(log).toMatchObject({ toName: 'Dana (daughter)', via: 'test mailer', kind: 'missed_l1' });
+    expect(log!.preview).toContain('We did not hear back about your morning routine today.');
+    expect(JSON.stringify(log)).not.toContain('@');
+  });
+
   it('never claims the person was asked when nobody reached them', async () => {
     const { store, mailer, tick } = await demo();
     setLocal('2026-10-19 14:01');

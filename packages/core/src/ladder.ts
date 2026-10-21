@@ -10,6 +10,8 @@ import { ledgerLine, missedEmail, needsHumanEmail, type EmailContent } from './w
 
 export interface OutgoingEmail extends EmailContent {
   to: string;
+  /** Contact's name, for logs and the demo panel (never the address). */
+  toName: string;
   householdId: HouseholdId;
   occurrenceId: string;
   kind: 'missed_l1' | 'missed_l2' | 'needs_human';
@@ -17,6 +19,22 @@ export interface OutgoingEmail extends EmailContent {
 
 export interface Mailer {
   send(email: OutgoingEmail): Promise<{ messageId: string }>;
+  /** Shown in the demo's email panel, e.g. "Amazon SES". */
+  readonly label?: string;
+}
+
+async function logSent(store: Store, mailer: Mailer, email: OutgoingEmail, messageId: string, relation: string): Promise<void> {
+  const preview = email.text.split('\n\n').slice(0, 2).join(' ').slice(0, 400);
+  await store.appendMailLog({
+    householdId: email.householdId,
+    at: new Date().toISOString(),
+    toName: relation ? `${email.toName} (${relation})` : email.toName,
+    subject: email.subject.slice(0, 160),
+    preview,
+    via: mailer.label ?? 'email',
+    messageId: messageId.slice(0, 120),
+    kind: email.kind,
+  });
 }
 
 export interface TickOptions {
@@ -233,8 +251,10 @@ async function deliverAlert(
   for (const c of recipients) {
     const content = missedEmail({ household: plan.household, def, occ: claimed, level, consecutiveDays: days, ackUrl: opts.ackUrl(id, occ.id, c.id) });
     try {
-      await opts.mailer.send({ ...content, to: c.email, householdId: id, occurrenceId: occ.id, kind: level === 2 ? 'missed_l2' : 'missed_l1' });
+      const email: OutgoingEmail = { ...content, to: c.email, toName: c.name, householdId: id, occurrenceId: occ.id, kind: level === 2 ? 'missed_l2' : 'missed_l1' };
+      const { messageId } = await opts.mailer.send(email);
       sentTo.push(c.name);
+      await logSent(store, opts.mailer, email, messageId, c.relation).catch(() => {});
     } catch (err) {
       report.errors.push(`${occ.id} -> ${c.id}: ${(err as Error).message}`);
     }
@@ -285,8 +305,10 @@ async function deliverNote(store: Store, plan: Plan, occ: Occurrence, now: Date,
   for (const c of recipients) {
     const content = needsHumanEmail({ household: plan.household, occ: claimed, crisis: !!claimed.needsHumanCrisis, ackUrl: opts.ackUrl(id, occ.id, c.id) });
     try {
-      await opts.mailer.send({ ...content, to: c.email, householdId: id, occurrenceId: occ.id, kind: 'needs_human' });
+      const email: OutgoingEmail = { ...content, to: c.email, toName: c.name, householdId: id, occurrenceId: occ.id, kind: 'needs_human' };
+      const { messageId } = await opts.mailer.send(email);
       sentTo.push(c.name);
+      await logSent(store, opts.mailer, email, messageId, c.relation).catch(() => {});
     } catch (err) {
       report.errors.push(`${occ.id} -> ${c.id}: ${(err as Error).message}`);
     }

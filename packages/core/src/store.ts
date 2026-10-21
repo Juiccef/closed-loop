@@ -71,6 +71,22 @@ export interface Store extends ClockStore {
   consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date): Promise<OAuthGrant | undefined>;
   listRefreshTokens(householdId: HouseholdId): Promise<Array<{ clientId: string; createdAt: string; expiresAt: string }>>;
   deleteRefreshTokens(householdId: HouseholdId): Promise<number>;
+
+  appendMailLog(entry: MailLogEntry): Promise<void>;
+  /** Newest first. */
+  listMailLog(householdId: HouseholdId, limit: number): Promise<MailLogEntry[]>;
+}
+
+/** A short record of an email that was actually sent (for the demo's email panel). No addresses. Expires in 2 days. */
+export interface MailLogEntry {
+  householdId: HouseholdId;
+  at: string;
+  toName: string;
+  subject: string;
+  preview: string;
+  via: string;
+  messageId: string;
+  kind: string;
 }
 
 /** What an authorization code or refresh token stands for. */
@@ -265,7 +281,16 @@ export class MemoryStore implements Store {
     return n;
   }
 
+  private mailLog: MailLogEntry[] = [];
+  async appendMailLog(entry: MailLogEntry) {
+    this.mailLog.push(clone(entry));
+  }
+  async listMailLog(householdId: HouseholdId, limit: number) {
+    return clone(this.mailLog.filter((m) => m.householdId === householdId).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit));
+  }
+
   async deleteHousehold(id: HouseholdId) {
+    this.mailLog = this.mailLog.filter((m) => m.householdId !== id);
     let n = await this.deleteRefreshTokens(id);
     if (this.households.delete(id)) n += 2; // META + registry entry
     n += this.consents.get(id)?.length ?? 0;

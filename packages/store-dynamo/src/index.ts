@@ -23,6 +23,7 @@ import {
   type Household,
   type HouseholdId,
   type LadderConfig,
+  type MailLogEntry,
   type OAuthGrant,
   type Occurrence,
   type Store,
@@ -326,6 +327,16 @@ export class DynamoStore implements Store {
     const items = await this.queryAll({ ...this.prefix(householdId, 'RT#'), ProjectionExpression: 'PK, SK' });
     await Promise.all(items.map((i) => this.doc.send(new DeleteCommand({ TableName: this.table, Key: { PK: i.PK, SK: i.SK } }))));
     return items.length;
+  }
+
+  // ---- Mail log (2-day TTL; no addresses) ----
+
+  async appendMailLog(entry: MailLogEntry) {
+    await this.put({ PK: `H#${entry.householdId}`, SK: `MAIL#${entry.at}#${randomSuffix()}`, T: 'mail', ...entry, ttl: ttlFrom(entry.at, 2) });
+  }
+  async listMailLog(householdId: HouseholdId, limit: number) {
+    const res = await this.doc.send(new QueryCommand({ TableName: this.table, ...this.prefix(householdId, 'MAIL#', false, limit) }));
+    return (res.Items ?? []).map((i) => entity<MailLogEntry>(i)!);
   }
 
   // ---- Delete my data ----

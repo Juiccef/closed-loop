@@ -328,7 +328,7 @@ export function createApiHandler(cfg: ApiConfig) {
         await cfg.seed();
         return json(200, { ok: true });
       }
-      if (path === '/admin/emails') return json(200, cfg.recentEmails?.() ?? []);
+      if (path === '/admin/emails') return json(200, await store.listMailLog(url.searchParams.get('household') ?? 'demo', 10));
       if (path === '/admin/demo-config') return json(200, cfg.demoConfig(origin));
 
       // ---- Console API ----

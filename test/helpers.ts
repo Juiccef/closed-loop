@@ -14,6 +14,7 @@ export const TZ = 'America/New_York';
 export const H = 'demo';
 
 export class FakeMailer implements Mailer {
+  readonly label = 'test mailer';
   sent: OutgoingEmail[] = [];
   failNext = 0;
   async send(email: OutgoingEmail) {

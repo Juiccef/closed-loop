@@ -6,6 +6,7 @@ import type { Mailer, OutgoingEmail } from '@closed-loop/core';
 /** Amazon SES (v2 API). In the SES sandbox every recipient must be a verified identity. */
 // The SES client is loaded on first send, so MCP cold starts do not pay for it.
 export class SesMailer implements Mailer {
+  readonly label = 'Amazon SES';
   private client?: SESv2Client;
 
   constructor(
@@ -39,6 +40,7 @@ export class SesMailer implements Mailer {
 
 /** Local run mode: writes each email to ./out/emails as HTML and logs a one-line summary. */
 export class FileMailer implements Mailer {
+  readonly label = 'local file (./out/emails)';
   private n = 0;
   constructor(private readonly dir: string) {}
 
@@ -57,6 +59,9 @@ export class FileMailer implements Mailer {
 export class RecordingMailer implements Mailer {
   readonly sent: Array<OutgoingEmail & { at: string; messageId: string }> = [];
   constructor(private readonly inner: Mailer) {}
+  get label() {
+    return this.inner.label;
+  }
 
   async send(email: OutgoingEmail) {
     const r = await this.inner.send(email);

@@ -321,8 +321,11 @@ async function refresh() {
   const mail = $('#mail');
   if (emails.length) {
     mail.innerHTML = emails
-      .slice(0, 5)
-      .map((m) => `<li><span class="subj">${esc(m.subject)}</span><span class="meta">to ${esc(m.to)} · ${new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} real time</span><p class="body">${esc(m.text.split('\n\n').slice(0, 2).join(' '))}</p></li>`)
+      .slice(0, 4)
+      .map(
+        (m) =>
+          `<li><span class="subj">${esc(m.subject)}</span><span class="meta">to ${esc(m.toName)} · sent with ${esc(m.via)} · ${new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} real time</span><p class="body">${esc(m.preview)}</p></li>`,
+      )
       .join('');
   } else if (mailEvents.length) {
     mail.innerHTML = mailEvents

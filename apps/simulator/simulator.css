@@ -325,7 +325,22 @@
 /* ---- Middle column ---- */
 .panel.state {
   display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 1rem;
+  height: var(--pane-h);
+}
+.mail-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.mail {
+  min-height: 0;
+  overflow-y: auto;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.mail:focus-visible {
+  outline-offset: -2px;
 }
 
 .clock {
@@ -724,7 +739,8 @@
     grid-template-columns: minmax(0, 1fr);
     padding: 1rem;
   }
-  .panel.convo {
+  .panel.convo,
+  .panel.state {
     height: auto;
   }
   .panel-head {

@@ -138,7 +138,7 @@ Every tool returns `structuredContent` plus a short text fallback. Signatures ar
 
 ## Accessibility
 
-The console is designed for large default text (18 px), full keyboard use, visible focus, labelled controls, errors tied to their fields, and status that never relies on color alone (each check-in's ring changes shape: open, closed, dotted, or marked). Body text uses Atkinson Hyperlegible. axe-core reports **zero violations** on every page in light and dark themes ([docs/accessibility.md](docs/accessibility.md)). This is a design choice; it is not a claim that blind or low-vision users asked for this product.
+The console follows Amazon product-UI conventions with Apple's system type (see [DESIGN.md](DESIGN.md)): full keyboard use, visible focus, labelled controls, errors tied to their fields, and status that never relies on color alone (each check-in's ring changes shape: open, closed, dotted, or marked, always next to the recorded words). axe-core reports **zero violations** on all five pages (landing, console, simulator, sign-in, acknowledge) in light and dark themes ([docs/accessibility.md](docs/accessibility.md)). This is a design choice; it is not a claim that blind or low-vision users asked for this product.
 
 ## Deploy to AWS
 

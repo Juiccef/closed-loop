@@ -43,7 +43,7 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 - **State machine and ladder** in a pure, tested core: conditional writes on a version attribute so overlapping ticks never double-send, an atomic daily alert cap, and honest "open reasons" (not reached vs asked with no answer).
 - **AWS:** Lambda (arm64) behind a Function URL, DynamoDB single table with TTL and Streams, EventBridge Scheduler (minute tick plus keep-warm), SES, Bedrock (Converse with tool use) for the planner and an asynchronous second opinion, all in one SAM template.
 - **Simulated Alexa+ client:** a browser page that is a real MCP client and shows every JSON-RPC message, a planner hop, the MCP App card, and a simulated clock that moves the whole system.
-- **Accessible caregiver console:** large type (Atkinson Hyperlegible), keyboard-first, status by shape and words, zero axe-core violations in light and dark.
+- **Accessible caregiver console:** Amazon-style app layout with Apple's system type, keyboard-first, status by shape and words, zero axe-core violations on every page in light and dark.
 - **Tests:** 96 unit, protocol, and OAuth tests, a 20-utterance fail-closed eval, an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
 
 ### Challenges we ran into

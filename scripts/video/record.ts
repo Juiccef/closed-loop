@@ -47,10 +47,10 @@ const inspectorRaw = execFileSync(
 );
 const inspectorTools: Array<{ name: string }> = JSON.parse(inspectorRaw).tools;
 const esc = (s: string) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
-const terminalHtml = `<!doctype html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
-body{margin:0;background:#0c1112;color:#e6e1d6;font:17px/1.55 'IBM Plex Mono',Menlo,monospace;padding:48px 64px}
-.bar{display:flex;gap:8px;margin-bottom:28px}.bar i{width:13px;height:13px;border-radius:50%;background:#3a4a4c;display:block}
-.p{color:#9fe0bf}.c{color:#8b9a96}.k{color:#9fd3ff}pre{margin:0;white-space:pre-wrap}
+const terminalHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#0f141a;color:#e6e9ee;font:17px/1.55 ui-monospace,'SF Mono',SFMono-Regular,Menlo,monospace;-webkit-font-smoothing:antialiased;padding:48px 64px}
+.bar{display:flex;gap:8px;margin-bottom:28px}.bar i{width:13px;height:13px;border-radius:50%;background:#353d49;display:block}
+.p{color:#8ee0a8}.c{color:#96a1ae}.k{color:#9cd1ff}pre{margin:0;white-space:pre-wrap}
 </style></head><body><div class="bar"><i></i><i></i><i></i></div><pre><span class="p">$</span> npx @modelcontextprotocol/inspector@2.11.0 --cli ${esc(BASE)}/mcp \\
     --transport http --header "Authorization: Bearer $MCP_BEARER_TOKEN" --method tools/list
 
@@ -66,11 +66,11 @@ const CURSOR_SCRIPT = `(function () {
     if (document.getElementById('__demo_cursor')) return;
     var c = document.createElement('div');
     c.id = '__demo_cursor';
-    c.style.cssText = 'position:fixed;left:-60px;top:-60px;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:rgba(178,68,31,.28);border:2.5px solid rgba(178,68,31,.95);z-index:2147483647;pointer-events:none;transition:transform .12s ease,background .12s ease;box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    c.style.cssText = 'position:fixed;left:-60px;top:-60px;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:rgba(9,114,211,.22);border:2.5px solid rgba(9,114,211,.95);z-index:2147483647;pointer-events:none;transition:transform .12s ease,background .12s ease;box-shadow:0 2px 8px rgba(0,0,0,.25)';
     document.documentElement.appendChild(c);
     addEventListener('mousemove', function (e) { c.style.left = e.clientX + 'px'; c.style.top = e.clientY + 'px'; }, true);
-    addEventListener('mousedown', function () { c.style.transform = 'scale(.7)'; c.style.background = 'rgba(178,68,31,.6)'; }, true);
-    addEventListener('mouseup', function () { c.style.transform = ''; c.style.background = 'rgba(178,68,31,.28)'; }, true);
+    addEventListener('mousedown', function () { c.style.transform = 'scale(.7)'; c.style.background = 'rgba(9,114,211,.55)'; }, true);
+    addEventListener('mouseup', function () { c.style.transform = ''; c.style.background = 'rgba(9,114,211,.22)'; }, true);
   }
   if (document.readyState === 'loading') addEventListener('DOMContentLoaded', install); else install();
 })();`;

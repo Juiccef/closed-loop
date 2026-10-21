@@ -1,21 +1,21 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import type { SESv2Client } from '@aws-sdk/client-sesv2';
 import type { Mailer, OutgoingEmail } from '@closed-loop/core';
 
 /** Amazon SES (v2 API). In the SES sandbox every recipient must be a verified identity. */
+// The SES client is loaded on first send, so MCP cold starts do not pay for it.
 export class SesMailer implements Mailer {
-  private readonly client: SESv2Client;
+  private client?: SESv2Client;
 
   constructor(
     private readonly from: string,
     private readonly configurationSet?: string,
-    client?: SESv2Client,
-  ) {
-    this.client = client ?? new SESv2Client({});
-  }
+  ) {}
 
   async send(email: OutgoingEmail) {
+    const { SESv2Client, SendEmailCommand } = await import('@aws-sdk/client-sesv2');
+    this.client ??= new SESv2Client({});
     const res = await this.client.send(
       new SendEmailCommand({
         FromEmailAddress: `Closed Loop check-ins <${this.from}>`,

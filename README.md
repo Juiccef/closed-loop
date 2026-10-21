@@ -164,7 +164,7 @@ Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB tab
 - **Not tested against real Alexa+.** Add-on tooling is partner-only. The server follows Alexa's published requirements and is exercised by three different MCP clients.
 - **Bedrock on this account.** The new AWS account used for the hackathon has a Bedrock daily token quota of 0 (FRICTION_LOG #7). The Bedrock planner and classifier are wired, deployed, and pass Bedrock's request validation; until the quota is raised they fall back to rules and say so.
 - **Auth.** A static bearer token stands in for OAuth 2.1 with PKCE. Discovery metadata is served; the authorization server is not implemented.
-- **Cold starts** are 0.56–0.64 s at 2048 MB; a keep-warm schedule keeps one instance ready because new accounts cannot use provisioned concurrency (FRICTION_LOG #8).
+- **Cold starts** of the full web function are about 0.9 s (0.61 s init plus a first request that creates the day's records); warm calls take 4–28 ms server-side. A keep-warm schedule keeps one instance ready because new accounts cannot use provisioned concurrency (FRICTION_LOG #8).
 
 ## Repository layout
 

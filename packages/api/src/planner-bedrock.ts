@@ -3,11 +3,12 @@
 // Falls back to the rules planner on any error, missing model ID, or timeout, and says so in the response.
 // Status: written against the Converse API types; live calls are blocked on this account (FRICTION_LOG #7).
 
-import { BedrockRuntimeClient, ConverseCommand, type Tool } from '@aws-sdk/client-bedrock-runtime';
+import type { BedrockRuntimeClient, Tool } from '@aws-sdk/client-bedrock-runtime';
 import { rulesPlanner, type PlannerRequest, type PlannerResponse } from './planner';
 
+// Loaded on first use so MCP cold starts do not pay for the Bedrock SDK.
 // One attempt: a throttled or failed call falls back to rules immediately instead of retrying.
-const client = new BedrockRuntimeClient({ maxAttempts: 1 });
+let client: BedrockRuntimeClient | undefined;
 const TIMEOUT_MS = 4000;
 
 const SYSTEM = `You decide the next tool call for a voice assistant running daily check-ins for an older adult who lives alone.
@@ -31,6 +32,8 @@ function toBedrockTools(tools: PlannerRequest['tools']): Tool[] {
 
 export async function bedrockPlanner(req: PlannerRequest, modelId: string): Promise<PlannerResponse> {
   const started = Date.now();
+  const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
+  client ??= new BedrockRuntimeClient({ maxAttempts: 1 });
   const context = req.current
     ? `Check-in in progress: occurrenceId=${req.current.occurrenceId}, label="${req.current.label}", question="${req.current.prompt}".`
     : 'No check-in is in progress.';

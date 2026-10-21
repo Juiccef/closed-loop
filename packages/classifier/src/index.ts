@@ -5,7 +5,7 @@
 // Status: Bedrock calls are written against the Converse API; this account's quota is 0 (FRICTION_LOG #7),
 // so today every call fails fast and is logged as "unavailable".
 
-import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import type { BedrockRuntimeClient } from '@aws-sdk/client-bedrock-runtime';
 import { mutateOccurrence, type CheckinResponse, type Store } from '@closed-loop/core';
 
 export const CATEGORIES = ['done', 'later', 'not_yet', 'no', 'unsure', 'distress', 'crisis'] as const;
@@ -24,6 +24,7 @@ When in doubt between done and unsure, choose unsure. When in doubt between unsu
 let client: BedrockRuntimeClient | undefined;
 
 export async function classifyWithBedrock(text: string, modelId: string): Promise<Category> {
+  const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
   client ??= new BedrockRuntimeClient({ maxAttempts: 1 });
   const res = await client.send(
     new ConverseCommand({

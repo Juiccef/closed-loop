@@ -83,6 +83,7 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Steps:** Deployed the real MCP handler (SDK 1.32.1, 756 KB bundle, AWS SDK from the runtime) on a Function URL with one DynamoDB `GetItem`. Forced cold starts by changing an environment variable. Read `REPORT` lines in CloudWatch Logs.
 - **Expected:** Cold start well under 500 ms; provisioned concurrency available if not.
 - **Actual:** Warm: p50 9 ms, p95 33 ms server-side. Cold at 1024 MB, CJS: init 384–484 ms + first invoke 360–552 ms. Cold at 2048 MB, ESM, DynamoDB connection opened at init (top-level await): init 471–550 ms + first invoke 90 ms = 561–640 ms. `get-account-settings` reports `ConcurrentExecutions: 10`; provisioned concurrency needs 10 unreserved, so none can be configured.
+- **Later, with the full app (895 KB bundle):** init 709 ms at first; loading the SES and Bedrock SDKs lazily (dynamic `import()` on first use) cut it to 611 ms. A cold `get_due_checkins` (which also creates the day's records) totals about 930 ms; warm requests are 4.4 ms p50 / 28 ms p95 server-side.
 - **Severity:** Medium.
 - **Workaround:** Keep-warm schedule (EventBridge Scheduler, every 5 minutes) on the MCP function. One household's calls are sequential, so one warm instance covers it.
 - **Suggestion:** Note the new-account concurrency quota on the provisioned-concurrency page; consider SnapStart for Node.js.

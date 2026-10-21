@@ -7,3 +7,4 @@ out/
 .DS_Store
 samconfig.toml
 packages/api/src/static.generated.ts
+oss/

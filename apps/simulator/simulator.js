@@ -3,7 +3,7 @@
 
 import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph } from '/shared/app.js';
 
-const state = { queue: [], current: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set() };
+const state = { queue: [], current: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map() };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -15,7 +15,8 @@ function caption(who, text, extra = '') {
   const li = document.createElement('li');
   const label = who === 'assistant' ? 'Assistant (simulated)' : who === 'person' ? 'Margaret' : 'Simulation';
   li.className = `cap ${who}`;
-  li.innerHTML = `<span class="who">${label}</span><span class="text">${esc(text)}</span>${extra}`;
+  li.innerHTML = `<span class="who">${label}</span><span class="text">${esc(text)}</span>${typeof extra === 'string' ? extra : ''}`;
+  if (extra instanceof Node) li.append(extra);
   $('#captions').append(li);
   li.scrollIntoView({ block: 'end', behavior: 'smooth' });
   return li;
@@ -54,6 +55,72 @@ function resultCard(sc, name) {
   return '';
 }
 
+// ---- MCP App cards (SEP-1865) ----
+// The card is the server's ui:// resource, rendered in a sandboxed iframe (opaque origin, restrictive CSP).
+// Simplification: one sandboxed frame instead of the spec's two-level sandbox proxy on a separate origin.
+
+const CARD_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+
+function hostTheme() {
+  const forced = document.documentElement.dataset.theme;
+  if (forced) return forced;
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function mountCard(toolName, args, result) {
+  const uri = result?._meta?.ui?.resourceUri || state.mcp.tools.find((t) => t.name === toolName)?._meta?.ui?.resourceUri;
+  const html = uri && state.cards.get(uri);
+  if (!html) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'app-card';
+  const frame = document.createElement('iframe');
+  frame.title = `Check-in card from the MCP server (${toolName})`;
+  frame.setAttribute('sandbox', 'allow-scripts');
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.srcdoc = html.replace('<head>', `<head><meta http-equiv="Content-Security-Policy" content="${CARD_CSP}">`);
+  const label = document.createElement('span');
+  label.className = 'app-label';
+  label.textContent = `MCP App · ${uri}${result?._meta?.ui?.invoked ? ` · ${result._meta.ui.invoked}` : ''}`;
+  wrap.append(frame, label);
+  const post = (msg) => frame.contentWindow?.postMessage(msg, '*');
+  const onMessage = (e) => {
+    if (e.source !== frame.contentWindow) return;
+    const m = e.data;
+    if (!m || m.jsonrpc !== '2.0') return;
+    if (m.method === 'ui/initialize') {
+      post({
+        jsonrpc: '2.0',
+        id: m.id,
+        result: {
+          protocolVersion: m.params?.protocolVersion ?? '2025-06-18',
+          hostCapabilities: {},
+          hostInfo: { name: 'closed-loop-simulated-client', version: '0.1.0' },
+          hostContext: { theme: hostTheme(), displayMode: 'inline', availableDisplayModes: ['inline'], locale: 'en-US', platform: 'web', containerDimensions: { width: frame.clientWidth, maxHeight: 320 } },
+        },
+      });
+    } else if (m.method === 'ui/notifications/initialized') {
+      post({ jsonrpc: '2.0', method: 'ui/notifications/tool-input', params: { arguments: args } });
+      post({ jsonrpc: '2.0', method: 'ui/notifications/tool-result', params: result });
+      traffic({ kind: 'app', tag: 'MCP App', title: `${uri} ← tool-result`, meta: 'sandboxed iframe', line: 'ui/initialize → initialized → tool-input → tool-result', body: { uri, tool: toolName, delivered: result } });
+    } else if (m.method === 'ui/notifications/size-changed') {
+      frame.style.height = `${Math.min(320, Math.max(60, m.params?.height ?? 120))}px`;
+    } else if (m.id != null && m.method) {
+      post({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'Method not supported by this host' } });
+    }
+  };
+  window.addEventListener('message', onMessage);
+  return wrap;
+}
+
+async function loadCards() {
+  const uris = new Set(state.mcp.tools.map((t) => t._meta?.ui?.resourceUri).filter(Boolean));
+  for (const uri of uris) {
+    const r = await state.mcp.readResource(uri);
+    const c = r?.contents?.find((x) => x.mimeType === 'text/html;profile=mcp-app');
+    if (c?.text) state.cards.set(uri, c.text);
+  }
+}
+
 // ---- Traffic pane ----
 
 function highlight(obj) {
@@ -89,7 +156,7 @@ function traffic(entry) {
     return;
   }
   const li = document.createElement('li');
-  const cls = entry.kind === 'planner' ? 'planner' : entry.kind === 'tick' ? 'tick' : 'err';
+  const cls = entry.kind === 'planner' ? 'planner' : entry.kind === 'tick' ? 'tick' : entry.kind === 'app' ? 'app' : 'err';
   li.innerHTML = `<details><summary><span class="t-kind ${cls}">${esc(entry.tag)}</span><span class="t-method">${esc(entry.title)}</span><span class="t-meta">${esc(entry.meta || '')}</span>${entry.line ? `<span class="t-line">${esc(entry.line)}</span>` : ''}</summary><pre tabindex="0">${highlight(entry.body)}</pre></details>`;
   list.prepend(li);
 }
@@ -102,10 +169,10 @@ function askNext() {
   else orb('closed', 'Nothing else due right now');
 }
 
-function handleDue(sc) {
+function handleDue(sc, r) {
   state.queue = sc.checkins || [];
   state.current = state.queue[0] || null;
-  say(sc.say);
+  say(sc.say, (r && mountCard('get_due_checkins', {}, r)) || '');
   if (!state.current) orb('closed', 'Nothing due right now');
 }
 
@@ -120,7 +187,7 @@ async function routineStart() {
   caption('system', `Household routine started (${label}). The routine opens the check-in add-on.`);
   orb('thinking', 'Asking the add-on what is due');
   const r = await callTool('get_due_checkins', {});
-  handleDue(r.structuredContent);
+  handleDue(r.structuredContent, r);
 }
 
 async function personSays(text) {
@@ -147,8 +214,8 @@ async function personSays(text) {
   const r = await callTool(name, args);
   if (r.isError) return say(r.content?.[0]?.text || 'Sorry, something went wrong.');
   const sc = r.structuredContent;
-  if (name === 'get_due_checkins') return handleDue(sc);
-  say(sc.say, resultCard(sc, name));
+  if (name === 'get_due_checkins') return handleDue(sc, r);
+  say(sc.say, mountCard(name, args, r) || resultCard(sc, name));
 
   if (name === 'record_response' || name === 'defer_checkin') {
     // Distress or crisis: no further questions in this conversation.
@@ -270,7 +337,8 @@ async function main() {
   state.mcp = new McpClient(demo.mcpUrl, demo.mcpToken, traffic);
   await state.mcp.initialize();
   await state.mcp.listTools();
-  $('#traffic-sub').textContent += ` · protocol ${state.mcp.negotiated}`;
+  await loadCards();
+  $('#traffic-sub').textContent += ` · protocol ${state.mcp.negotiated}${state.cards.size ? ' · MCP Apps' : ''}`;
   await Promise.all([loadClock(), refresh()]);
   setInterval(() => {
     refresh().catch(() => {});

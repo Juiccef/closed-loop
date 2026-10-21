@@ -1,3 +1,5 @@
+export {};
+
 // End-to-end replay of the demo script against a running deployment, asserting the ledger at each beat.
 // Usage: tsx scripts/e2e.ts [base_url] [access_code] [mcp_token]
 //   local (default): tsx scripts/e2e.ts            (needs `npm run dev` running)

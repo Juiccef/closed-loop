@@ -249,6 +249,26 @@
   }
 }
 
+.app-card {
+  margin-top: 0.45rem;
+  width: min(100%, 26rem);
+  animation: pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.app-card iframe {
+  display: block;
+  width: 100%;
+  height: 110px;
+  border: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+.app-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--ink-2);
+  margin-top: 0.2rem;
+}
 .routine {
   display: flex;
   flex-wrap: wrap;
@@ -559,6 +579,10 @@
 .t-kind.planner {
   background: #2c3550;
   color: #b9c8ff;
+}
+.t-kind.app {
+  background: #23404e;
+  color: #9fdcf6;
 }
 .t-kind.tick {
   background: #4a3320;

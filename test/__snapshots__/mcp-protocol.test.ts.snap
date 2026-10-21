@@ -3,6 +3,11 @@
 exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapshot) 1`] = `
 [
   {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
     "annotations": {
       "idempotentHint": false,
       "openWorldHint": false,
@@ -84,6 +89,11 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
     "title": "Get due check-ins",
   },
   {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
     "annotations": {
       "idempotentHint": false,
       "openWorldHint": false,
@@ -184,6 +194,11 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
     "title": "Record a check-in answer",
   },
   {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -247,6 +262,11 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
     "title": "Ask again later",
   },
   {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,
@@ -308,6 +328,11 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
     "title": "Today's check-in summary",
   },
   {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
     "annotations": {
       "idempotentHint": true,
       "openWorldHint": false,

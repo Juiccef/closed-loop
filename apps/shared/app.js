@@ -172,7 +172,12 @@ export class McpClient {
       jsonrpc: '2.0',
       id: this.nextId++,
       method: 'initialize',
-      params: { protocolVersion: this.protocolVersion, capabilities: {}, clientInfo: { name: 'closed-loop-simulated-client', version: '0.1.0' } },
+      params: {
+        protocolVersion: this.protocolVersion,
+        // MCP Apps extension (SEP-1865): this client can render ui:// cards.
+        capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } },
+        clientInfo: { name: 'closed-loop-simulated-client', version: '0.1.0' },
+      },
     });
     this.negotiated = result.protocolVersion;
     this.serverInfo = result.serverInfo;
@@ -184,6 +189,10 @@ export class McpClient {
     const result = await this.send({ jsonrpc: '2.0', id: this.nextId++, method: 'tools/list' });
     this.tools = result.tools;
     return result.tools;
+  }
+
+  async readResource(uri) {
+    return this.send({ jsonrpc: '2.0', id: this.nextId++, method: 'resources/read', params: { uri } });
   }
 
   async callTool(name, args = {}) {

@@ -83,6 +83,28 @@ describe('MCP protocol (in-process, real backend)', () => {
     expect(done.structuredContent.recordedWording).toBe('reported by the person');
   });
 
+  it('MCP App card: listed and readable as text/html;profile=mcp-app, referenced by tools and results', async () => {
+    const { rpc, call } = await setup();
+    const init = await rpc('initialize', {
+      protocolVersion: '2025-11-25',
+      capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } },
+      clientInfo: { name: 'test', version: '1' },
+    });
+    expect(init.status).toBe(200);
+    expect(init.body.result.capabilities.resources).toBeDefined();
+    const list = (await rpc('resources/list')).body.result.resources;
+    expect(list).toEqual([expect.objectContaining({ uri: 'ui://closed-loop/checkin-card', mimeType: 'text/html;profile=mcp-app' })]);
+    const read = (await rpc('resources/read', { uri: 'ui://closed-loop/checkin-card' })).body.result.contents[0];
+    expect(read.mimeType).toBe('text/html;profile=mcp-app');
+    expect(read.text).toContain('ui/initialize');
+    expect(read.text).not.toMatch(/https?:\/\//); // no network under the default CSP
+    const tools = (await rpc('tools/list')).body.result.tools;
+    for (const t of tools) expect(t._meta?.ui?.resourceUri).toBe('ui://closed-loop/checkin-card');
+    setLocal('2026-10-19 08:00');
+    const due = await call('get_due_checkins');
+    expect(due._meta.ui).toEqual({ resourceUri: 'ui://closed-loop/checkin-card', invoking: 'Checking today\u2019s check-ins', invoked: 'Check-ins ready' });
+  });
+
   it('unknown occurrence is a tool error (isError), not a protocol error', async () => {
     const { call } = await setup();
     setLocal('2026-10-19 08:00');

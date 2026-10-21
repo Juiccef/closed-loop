@@ -18,6 +18,7 @@ import {
   type PauseScope,
   type Store,
 } from '@closed-loop/core';
+import { CARD_HTML, CARD_MIME, CARD_URI } from './card';
 
 // Tool signatures are locked once an Alexa+ add-on is published, so everything here is
 // deterministic: fixed names, fixed order, bounded strings, enums instead of free text.
@@ -102,10 +103,24 @@ export function coreBackend(store: Store): CheckinBackend {
   };
 }
 
-function result<T extends { say: string }>(structured: T): CallToolResult {
+/** Status lines Alexa+ shows while a tool runs and when it finishes (`_meta.ui` in the tool response). */
+const UI_STATUS: Record<string, [invoking: string, invoked: string]> = {
+  get_due_checkins: ['Checking today\u2019s check-ins', 'Check-ins ready'],
+  record_response: ['Noting the answer', 'Answer noted'],
+  defer_checkin: ['Moving the check-in', 'Check-in moved'],
+  get_my_status: ['Reading today\u2019s summary', 'Summary ready'],
+  pause_checkins: ['Pausing check-ins', 'Check-ins paused'],
+};
+
+/** Tool definitions reference the card per the MCP Apps extension (SEP-1865). */
+const toolUiMeta = { ui: { resourceUri: CARD_URI } };
+
+function result<T extends { say: string }>(tool: string, structured: T): CallToolResult {
+  const [invoking, invoked] = UI_STATUS[tool] ?? ['Working', 'Done'];
   return {
     content: [{ type: 'text', text: structured.say }],
     structuredContent: structured as unknown as Record<string, unknown>,
+    _meta: { ui: { resourceUri: CARD_URI, invoking, invoked } },
   };
 }
 
@@ -113,9 +128,9 @@ function failure(message: string): CallToolResult {
   return { isError: true, content: [{ type: 'text', text: message }] };
 }
 
-async function guarded<T extends { say: string }>(fn: () => Promise<T>): Promise<CallToolResult> {
+async function guarded<T extends { say: string }>(tool: string, fn: () => Promise<T>): Promise<CallToolResult> {
   try {
-    return result(await fn());
+    return result(tool, await fn());
   } catch (err) {
     if (err instanceof CheckinInputError) return failure(err.message);
     throw err;
@@ -123,6 +138,18 @@ async function guarded<T extends { say: string }>(fn: () => Promise<T>): Promise
 }
 
 export function registerTools(server: McpServer, backend: CheckinBackend, ctx: CallerContext): void {
+  server.registerResource(
+    'checkin-card',
+    CARD_URI,
+    {
+      title: 'Check-in card',
+      description: 'Visual card for check-in results (MCP Apps). Clients without UI support use the text result.',
+      mimeType: CARD_MIME,
+      _meta: { ui: { prefersBorder: false } },
+    },
+    async () => ({ contents: [{ uri: CARD_URI, mimeType: CARD_MIME, text: CARD_HTML, _meta: { ui: { prefersBorder: false } } }] }),
+  );
+
   server.registerTool(
     'get_due_checkins',
     {
@@ -133,8 +160,9 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       inputSchema: {},
       outputSchema: outputs.get_due_checkins.shape,
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+      _meta: toolUiMeta,
     },
-    async () => guarded(() => backend.getDueCheckins(ctx)),
+    async () => guarded('get_due_checkins', () => backend.getDueCheckins(ctx)),
   );
 
   server.registerTool(
@@ -152,8 +180,9 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       },
       outputSchema: outputs.record_response.shape,
       annotations: { readOnlyHint: false, idempotentHint: false, openWorldHint: false },
+      _meta: toolUiMeta,
     },
-    async (args) => guarded(() => backend.recordResponse(ctx, args)),
+    async (args) => guarded('record_response', () => backend.recordResponse(ctx, args)),
   );
 
   server.registerTool(
@@ -165,8 +194,9 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       inputSchema: { occurrenceId, until: z.enum(DEFER_UNTIL) },
       outputSchema: outputs.defer_checkin.shape,
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: toolUiMeta,
     },
-    async (args) => guarded(() => backend.deferCheckin(ctx, args)),
+    async (args) => guarded('defer_checkin', () => backend.deferCheckin(ctx, args)),
   );
 
   server.registerTool(
@@ -178,8 +208,9 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       inputSchema: {},
       outputSchema: outputs.get_my_status.shape,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: toolUiMeta,
     },
-    async () => guarded(() => backend.getMyStatus(ctx)),
+    async () => guarded('get_my_status', () => backend.getMyStatus(ctx)),
   );
 
   server.registerTool(
@@ -191,7 +222,8 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       inputSchema: { scope: z.enum(PAUSE_SCOPES) },
       outputSchema: outputs.pause_checkins.shape,
       annotations: { readOnlyHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: toolUiMeta,
     },
-    async (args) => guarded(() => backend.pauseCheckins(ctx, args)),
+    async (args) => guarded('pause_checkins', () => backend.pauseCheckins(ctx, args)),
   );
 }

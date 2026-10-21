@@ -10,7 +10,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Locator, type Page } from 'playwright';
 import { ackUrlBuilder } from '@closed-loop/core';
-import { architectureHtml, endCardHtml } from './slides';
+import { architectureHtml, endCardHtml, problemHtml, skillHtml } from './slides';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const OUT = join(ROOT, 'video', 'out');
@@ -33,7 +33,7 @@ const MCP_TOKEN = LOCAL ? 'local-dev-mcp' : env.MCP_BEARER_TOKEN!;
 const ACK_SECRET = LOCAL ? 'local-dev-ack-secret' : env.ACK_LINK_SECRET!;
 
 const AUDIO_DELAY = 0.3; // narration starts this long after each scene begins
-const durations = [1, 2, 3, 4, 5, 6, 7].map((n) =>
+const durations = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
   Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(NARRATION, `scene-${n}.mp3`)], { encoding: 'utf8' }).trim()),
 );
 console.log(`narration: ${durations.map((d) => d.toFixed(1)).join(' + ')} = ${durations.reduce((a, b) => a + b, 0).toFixed(1)} s`);
@@ -192,26 +192,34 @@ const setupVideo = page.video();
 await page.close(); // setup tab (includes typing the access code): its recording is deleted
 await setupVideo?.delete();
 
-// ---- Scene 1: landing ----
+// ---- Scene 1: the problem, in sourced numbers; Scene 2: landing ----
 await newClip();
+await page.setContent(problemHtml, { waitUntil: 'networkidle' });
+pos = { x: 1500, y: 820 };
+await begin(1);
+for (const [t, step] of [[0.4, 1], [4.6, 2], [10.3, 3], [15.6, 4]] as const) {
+  await at(t);
+  await page.evaluate((n) => (document.body.dataset.step = String(n)), step);
+}
+await end(1, 0.9);
 await page.goto(`${BASE}/`);
 await page.waitForLoadState('load');
-await begin(1);
+await begin(2);
 await at(1.2);
 await moveTo(1180, 300, 40);
 await at(9.5);
 await point(page.locator('.door', { hasText: 'Simulated client' }));
 await at(12.8);
 await point(page.locator('.door', { hasText: 'Caregiver console' }));
-await end(1);
+await end(2);
 await closeClip('clip-1');
 
-// ---- Scene 2: console (contact rows with email addresses are never on screen) ----
+// ---- Scene 3: console (contact rows with email addresses are never on screen) ----
 await newClip();
 await page.goto(`${BASE}/console/#checkins`);
 await page.locator('.checkin[data-id="morning"]').waitFor();
 await wait(800);
-await begin(2);
+await begin(3);
 await at(0.8);
 await click(page.locator('.checkin[data-id="morning"] > summary'));
 await at(2.6);
@@ -233,16 +241,16 @@ await page.evaluate(() => {
   window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 92, behavior: 'instant' as ScrollBehavior });
 });
 await point(page.locator('#consent-current'));
-await end(2);
+await end(3);
 await closeClip('clip-2');
 
-// ---- Scenes 3–5 in one tab, so the conversation stays on screen ----
+// ---- Scenes 4–6 in one tab, so the conversation stays on screen ----
 await newClip();
 await page.goto(`${BASE}/simulator/`);
 await simulatorReady();
 
-// Scene 3: routine start, hedged answer, deferral
-await begin(3);
+// Scene 4: routine start, hedged answer, deferral
+await begin(4);
 await at(1.2);
 await click(page.locator('#routine'));
 await at(7.0);
@@ -253,10 +261,10 @@ await at(15.8);
 await point(page.locator('#traffic > li', { hasText: 'planner' }).first());
 await at(19.6);
 await point(page.locator('.app-card').last());
-await end(3);
+await end(4);
 
-// Scene 4: +5 hours, follow-up first, clear yes
-await begin(4);
+// Scene 5: +5 hours, follow-up first, clear yes
+await begin(5);
 await at(0.4);
 await click(page.locator('[data-adv="18000"]'));
 await at(2.2);
@@ -265,10 +273,10 @@ await at(5.2);
 await click(page.locator('.chip', { hasText: 'Yes, done.' }));
 await at(8.6);
 await point(page.locator('.app-card').last());
-await end(4, 1.0);
+await end(5, 1.0);
 
-// Scene 5: +1 day, the tick, the email as sent, acknowledge
-await begin(5);
+// Scene 6: +1 day, the tick, the email as sent, acknowledge
+await begin(6);
 await at(0.4);
 await click(page.locator('[data-adv="86400"]'));
 await page.locator('#mail li .subj').first().waitFor({ timeout: 20_000 });
@@ -289,14 +297,14 @@ await at(12.4);
 await point(page.locator('button[type="submit"]'));
 await at(14.8);
 await click(page.locator('button[type="submit"]'));
-await end(5, 1.2);
+await end(6, 1.2);
 await closeClip('clip-3');
 
-// ---- Scene 6: distress, then emergency words ----
+// ---- Scene 7: distress, then emergency words ----
 await newClip();
 await page.goto(`${BASE}/simulator/`);
 await simulatorReady();
-await begin(6);
+await begin(7);
 await at(0.5);
 await click(page.locator('#routine'));
 await at(2.4);
@@ -305,16 +313,30 @@ await at(10.2);
 await click(page.locator('.chip', { hasText: "I fell and I can't get up" }));
 await at(14.2);
 await point(page.locator('#loops'));
-await end(6, 1.0);
+await end(7, 1.0);
+
+// Scene 8: Dana asks from Dana's own assistant; hears the record; cannot answer for Margaret
+await begin(8);
+await at(0.6);
+await click(page.locator('label:has(#speaker-family)'));
+await at(2.8);
+await click(page.locator('.chip', { hasText: 'How is Mom doing today?' }));
+await at(5.6);
+await point(page.locator('.app-card').last());
+await at(10.9);
+await click(page.locator('.chip', { hasText: 'Yes, Mom did it.' }));
+await at(13.2);
+await point(page.locator('.cap.assistant').last());
+await end(8, 1.0);
 await closeClip('clip-4');
 
-// ---- Scene 7: Inspector, OAuth sign-in page, architecture, end card ----
+// ---- Scene 9: Inspector, OAuth sign-in page, architecture, end card ----
 await newClip();
 await page.setContent(terminalHtml, { waitUntil: 'networkidle' });
 await wait(500);
 pos = { x: 1500, y: 820 };
-await begin(7);
-await at(5.4);
+await begin(9);
+await at(3.9);
 const authParams = new URLSearchParams({
   response_type: 'code',
   client_id: 'simulator',
@@ -327,13 +349,16 @@ const authParams = new URLSearchParams({
 });
 await page.goto(`${BASE}/oauth/authorize?${authParams}`);
 await point(page.locator('#link-code'));
-await at(9.6);
+await at(7.6);
+await page.setContent(skillHtml(await readFile(join(ROOT, 'skills', 'closed-loop-checkins', 'SKILL.md'), 'utf8')), { waitUntil: 'networkidle' });
+await page.mouse.move(pos.x, pos.y);
+await at(10.6);
 await page.setContent(architectureHtml, { waitUntil: 'networkidle' });
 await page.mouse.move(pos.x, pos.y);
-await at(14.2);
+await at(15.6);
 await page.setContent(endCardHtml, { waitUntil: 'networkidle' });
 await moveTo(1600, 950, 8);
-await end(7, 1.8);
+await end(9, 1.8);
 await closeClip('clip-5');
 
 // ---- Finish ----

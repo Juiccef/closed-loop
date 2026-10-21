@@ -16,7 +16,9 @@
     "typecheck": "tsx scripts/gen-static.ts && tsc -p tsconfig.json --noEmit",
     "deploy": "scripts/deploy.sh",
     "e2e": "tsx scripts/e2e.ts",
-    "second-client": "tsx scripts/second-client.ts"
+    "second-client": "tsx scripts/second-client.ts",
+    "video:record": "tsx scripts/video/record.ts",
+    "video:assemble": "tsx scripts/video/assemble.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1154.0",

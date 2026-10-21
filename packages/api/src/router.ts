@@ -250,8 +250,19 @@ export function createApiHandler(cfg: ApiConfig) {
       html(
         200,
         `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<style>body{font:20px/1.5 system-ui,sans-serif;max-width:36rem;margin:3rem auto;padding:0 1rem;color:#111;background:#fff}button{font:inherit;padding:.75rem 1.5rem;border-radius:.5rem;border:2px solid #1d4ed8;background:#1d4ed8;color:#fff;cursor:pointer}button:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}.note{font-size:16px;color:#444}@media (prefers-color-scheme:dark){body{background:#111;color:#eee}.note{color:#bbb}}</style></head>
-<body><main><h1>${title}</h1>${body}<p class="note">${SCOPE_NOTICE}</p></main></body></html>`,
+<style>
+:root{--paper:#f5efe3;--card:#fffaf0;--ink:#1f2a2c;--ink2:#4a5557;--rule:#d8ccb4;--sage:#3f6b4f;--focus:#0b57d0}
+@media (prefers-color-scheme:dark){:root{--paper:#12191a;--card:#1e2829;--ink:#efe8da;--ink2:#b9b2a4;--rule:#34403f;--sage:#8fc29f;--focus:#8ab4ff}}
+body{margin:0;font:19px/1.55 "Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+main{max-width:34rem;margin:3rem auto;padding:0 1rem}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:14px;padding:1.4rem 1.5rem}
+h1{font-family:Georgia,serif;font-size:1.8rem;margin:0 0 .6rem}
+.ring{width:44px;height:44px;margin-bottom:.4rem}.ring circle{fill:none;stroke:var(--sage);stroke-width:5;stroke-linecap:round}
+button{font:inherit;font-weight:700;padding:.65rem 1.3rem;border-radius:999px;border:2px solid var(--ink);background:var(--ink);color:var(--paper);min-height:44px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.note{font-size:15px;color:var(--ink2)}
+</style></head>
+<body><main><div class="card"><svg class="ring" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14"/></svg><h1>${title}</h1>${body}</div><p class="note">${SCOPE_NOTICE}</p></main></body></html>`,
       );
     if (!payload) return page('Link expired', '<p>This acknowledge link is invalid or has expired. Open the caregiver console to see the latest status.</p>');
     const occ = await store.getOccurrence(payload.householdId, payload.occurrenceId);

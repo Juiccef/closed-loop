@@ -1,0 +1,12 @@
+import { chromium } from 'playwright';
+import { readFile } from 'node:fs/promises';
+const src = await readFile('scripts/video/record.ts', 'utf8');
+const start = src.indexOf('const box = ');
+const end = src.indexOf('const endCardHtml');
+const code = src.slice(start, end) + '\nexport default architectureHtml;';
+const mod = await import('data:text/javascript;base64,' + Buffer.from(code.replace(/: number/g, '').replace(/ = 'ink'/, " = 'ink'").replace(/, dashed = false\)/, ', dashed = false)')).toString('base64'));
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1536, height: 864 }, deviceScaleFactor: 1.25 });
+await page.setContent(mod.default, { waitUntil: 'networkidle' });
+await page.screenshot({ path: 'video/out/stills/architecture.png' });
+await browser.close();

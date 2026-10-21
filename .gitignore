@@ -8,3 +8,4 @@ out/
 samconfig.toml
 packages/api/src/static.generated.ts
 oss/
+video/out/

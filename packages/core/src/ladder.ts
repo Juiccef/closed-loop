@@ -103,7 +103,7 @@ export async function tickHousehold(store: Store, id: HouseholdId, opts: TickOpt
     if (shouldDeliver(occ.alertStatus, occ.alertClaimedAt, occ.alertAttempts, now, opts) && def) {
       await deliverAlert(store, plan, occ, def, now, opts, report);
     }
-    if (occ.needsHumanNoteStatus && shouldDeliver(occ.needsHumanNoteStatus, occ.needsHumanClaimedAt, 0, now, opts)) {
+    if (occ.needsHumanNoteStatus && shouldDeliver(occ.needsHumanNoteStatus, occ.needsHumanClaimedAt, occ.needsHumanAttempts, now, opts)) {
       await deliverNote(store, plan, occ, now, opts, report);
     }
   }
@@ -272,7 +272,7 @@ async function deliverNote(store: Store, plan: Plan, occ: Occurrence, now: Date,
     id,
     occ.id,
     (cur) =>
-      cur.needsHumanNoteStatus && shouldDeliver(cur.needsHumanNoteStatus, cur.needsHumanClaimedAt, 0, now, opts)
+      cur.needsHumanNoteStatus && shouldDeliver(cur.needsHumanNoteStatus, cur.needsHumanClaimedAt, cur.needsHumanAttempts, now, opts)
         ? { ...cur, needsHumanNoteStatus: 'sending', needsHumanClaimedAt: nowIso, updatedAt: nowIso }
         : null,
     occ,
@@ -292,7 +292,14 @@ async function deliverNote(store: Store, plan: Plan, occ: Occurrence, now: Date,
     }
   }
   const ok = sentTo.length > 0 || recipients.length === 0;
-  await mutateOccurrence(store, id, occ.id, (cur) => ({ ...cur, needsHumanNoteStatus: ok ? 'sent' : 'failed', updatedAt: nowIso }), claimed);
+  await mutateOccurrence(
+    store,
+    id,
+    occ.id,
+    (cur) => ({ ...cur, needsHumanNoteStatus: ok ? 'sent' : 'failed', needsHumanAttempts: ok ? cur.needsHumanAttempts : (cur.needsHumanAttempts ?? 0) + 1, updatedAt: nowIso }),
+    claimed,
+  );
+  if (!ok) await store.appendEvent({ householdId: id, at: nowIso, type: 'alert_failed', occurrenceId: occ.id, detail: 'Family note could not be sent; will retry.' });
   if (sentTo.length) {
     await store.appendEvent({ householdId: id, at: nowIso, type: 'needs_human_note_sent', occurrenceId: occ.id, detail: `Note sent to ${sentTo.join(', ')}: a call may help.` });
     report.notesSent++;

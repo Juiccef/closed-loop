@@ -126,6 +126,7 @@ export interface Occurrence {
   needsHumanNoteStatus?: AlertStatus;
   needsHumanCrisis?: boolean;
   needsHumanClaimedAt?: string;
+  needsHumanAttempts?: number;
   ackedAt?: string;
   ackedBy?: string;
   reportedLate?: boolean;

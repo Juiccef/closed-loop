@@ -6,7 +6,8 @@
 import { BedrockRuntimeClient, ConverseCommand, type Tool } from '@aws-sdk/client-bedrock-runtime';
 import { rulesPlanner, type PlannerRequest, type PlannerResponse } from './planner';
 
-const client = new BedrockRuntimeClient({});
+// One attempt: a throttled or failed call falls back to rules immediately instead of retrying.
+const client = new BedrockRuntimeClient({ maxAttempts: 1 });
 const TIMEOUT_MS = 4000;
 
 const SYSTEM = `You decide the next tool call for a voice assistant running daily check-ins for an older adult who lives alone.
@@ -58,6 +59,10 @@ export async function bedrockOrRulesPlanner(body: unknown): Promise<PlannerRespo
   const req = (body ?? {}) as PlannerRequest;
   const modelId = process.env.BEDROCK_MODEL_ID;
   if (!modelId) return rulesPlanner(req);
+  if (!req.tools?.length) {
+    const fallback = rulesPlanner(req);
+    return { ...fallback, rationale: `${fallback.rationale} (no tool list sent, so Bedrock was not called)` };
+  }
   try {
     return await bedrockPlanner(req, modelId);
   } catch (err) {

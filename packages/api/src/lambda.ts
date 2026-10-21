@@ -38,7 +38,7 @@ const handler = urlEventHandler(
         mcpUrl: `${origin}/mcp`,
         mcpToken: MCP_TOKEN,
         householdId: 'demo',
-        planner: process.env.BEDROCK_MODEL_ID ? 'bedrock' : 'rules',
+        planner: process.env.BEDROCK_MODEL_ID ? 'Bedrock, rules fallback' : 'rules',
         mode: 'aws',
       }),
       staticFile: async (path) => {

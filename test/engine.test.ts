@@ -270,6 +270,21 @@ describe('closing the loop: tick, ladder, email', () => {
     expect(mailer.sent.filter((m) => m.occurrenceId === MORNING)).toHaveLength(1);
   });
 
+  it('a failing family note is retried, but not forever', async () => {
+    const { store, mailer, tick } = await demo();
+    setLocal('2026-10-19 08:05');
+    await getDueCheckins(store, H);
+    await recordResponse(store, H, { occurrenceId: MORNING, response: 'needs_help' });
+    mailer.failNext = 100;
+    for (let m = 6; m < 16; m++) {
+      setLocal(`2026-10-19 08:${String(m).padStart(2, '0')}`);
+      await tick();
+    }
+    const occ = (await store.getOccurrence(H, MORNING))!;
+    expect(occ.needsHumanNoteStatus).toBe('failed');
+    expect(occ.needsHumanAttempts).toBe(3);
+  });
+
   it('a late "done" after the email marks it reported late and stops further emails', async () => {
     const { store, mailer, tick } = await demo();
     setLocal('2026-10-19 14:01');

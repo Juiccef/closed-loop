@@ -133,6 +133,42 @@ Resources:
             ScheduleExpression: rate(1 minute)
             RetryPolicy: { MaximumRetryAttempts: 0 }
 
+  # Second opinion on what the person said, off the hot path: DynamoDB Streams -> Lambda -> Bedrock.
+  ClassifierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: Async Bedrock review of new utterances; can only move a record toward caution
+      CodeUri: ../dist/classifier/
+      MemorySize: 512
+      Timeout: 30
+      Environment:
+        Variables:
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref Table }
+        - !If
+          - HasBedrock
+          - Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub arn:aws:bedrock:*::foundation-model/*
+                  - !Sub arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*
+          - !Ref AWS::NoValue
+      Events:
+        Utterances:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt Table.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
+            MaximumRetryAttempts: 2
+            BisectBatchOnFunctionError: true
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"SK":{"S":[{"prefix":"UTT#"}]}}}}'
+
   WebLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -142,6 +178,11 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub /aws/lambda/${TickFunction}
+      RetentionInDays: 7
+  ClassifierLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ClassifierFunction}
       RetentionInDays: 7
 
 Outputs:

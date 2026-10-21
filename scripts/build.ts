@@ -8,6 +8,7 @@ const ROOT = join(import.meta.dirname, '..');
 const targets = {
   web: 'packages/api/src/lambda.ts',
   tick: 'packages/tick/src/lambda.ts',
+  classifier: 'packages/classifier/src/lambda.ts',
 };
 
 for (const [name, entry] of Object.entries(targets)) {

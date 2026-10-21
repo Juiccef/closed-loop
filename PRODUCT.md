@@ -22,9 +22,9 @@ Most reminders ask and never learn whether the loop closed. Closed Loop's ledger
 ## Operating Context
 
 - Caregiver console: today's ledger, check-in editor (with wording lint), contacts and escalation ladder, consent record, link a voice assistant (OAuth link codes), pause and delete data, activity log.
-- Simulated Alexa+ client (demo centerpiece): conversation captions, a simulated clock (+1 hour, +5 hours, +1 day), today's loops, family email panel, live MCP JSON-RPC traffic pane, MCP App cards.
+- Simulated Alexa+ client (demo centerpiece): conversation captions, a "who is speaking" switch (the person, or a family member asking from their own assistant), a simulated clock (+1 hour, +5 hours, +1 day), today's loops, family email panel, live MCP JSON-RPC traffic pane, MCP App cards.
 - Landing page, OAuth sign-in page, and acknowledge page (opened from family emails).
-- Demo video recorded at 1920×1080 (browser at 125% scaling), narrated.
+- Demo video recorded at 1920×1080 (browser at 125% scaling), narrated, opening with the problem in sourced numbers (`docs/impact.md`).
 
 ## Capabilities and Constraints
 

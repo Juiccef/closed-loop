@@ -14,11 +14,12 @@ Demo video: _link added at submission_ · Live demo: _URL shared with judges (ac
 
 ## What it does
 
-A reminder that says "take care of your morning routine" never learns whether that happened. Families improvise around this (a reminder plus a follow-up call, or a lamp switched off as a sign of life). Amazon ended Alexa Together in 2025. Closed Loop does the part that comes **after** the question:
+A reminder that says "take care of your morning routine" never learns whether that happened. Families improvise around this (a reminder plus a follow-up call, or a lamp switched off as a sign of life). Amazon's own remote-caregiving service, Alexa Together, is no longer available (Amazon, May 2025). An estimated 7.4 million Americans 65 and older live with Alzheimer's, and 1 in 4 older Americans with dementia or mild cognitive impairment lives alone ([sources](docs/impact.md)). Closed Loop does the part that comes **after** the question:
 
 1. **Record what was said, honestly.** "I think so, maybe after lunch" is stored as *said later*, never as done. A hedged "yes" becomes *said they would, not sure*. The ledger only ever says *reported by the person*, *said later*, *no response*, *needs human contact*, and never "confirmed".
 2. **Follow up.** It asks again at the time the person chose ("after lunch" → 13:00), or after the caregiver's re-ask interval, at most a set number of times. It never re-asks in the same turn.
 3. **Tell a human when the loop stays open.** When a window closes with no report, the family member gets a plain email: *"We did not hear back about your morning routine today. This is not an emergency alert."* One click acknowledges it and stops further emails. If nobody acknowledges for a second day, the second contact is told.
+4. **Let family ask, never answer.** From their own Alexa, a family member asks "How is Mom doing today?" and hears the day exactly as recorded. A family member's linked account can never answer, defer, or pause a check-in for the person; the server refuses it.
 
 Confusion or distress ("I want to go home, where is everyone?") gets the family's own calming line, no further questions, and a neutral note to the family: *"Margaret seemed confused or upset during a check-in. A call may help."* Emergency wording gets one fixed line: *"If this is an emergency, please call 911 now."* Self-harm wording adds the 988 Suicide and Crisis Lifeline.
 
@@ -106,10 +107,11 @@ Self-hosted, **Streamable HTTP**, stateless (no `Mcp-Session-Id`), JSON response
 | `defer_checkin` | `occurrenceId`, `until` (`in_30_min` · `in_1_hour` · `after_lunch` · `this_afternoon` · `this_evening`) | Moves the next ask to a concrete time inside the window. |
 | `get_my_status` | none | Today in plain words, and who gets emailed, so the person knows what is shared. |
 | `pause_checkins` | `scope` (`today` · `24_hours`) | Always honored, no questions asked. |
+| `get_family_summary` | none | For a family member: today's check-ins in the exact recorded wording, by name, with "a call may help" when one needs human contact. Read-only. |
 
 Every tool returns `structuredContent` plus a short text fallback. Signatures are fixed, strings are bounded, choices are enums (Alexa+ refreshes tool definitions only on deployment).
 
-**MCP App card.** The server also publishes `ui://closed-loop/checkin-card` (`text/html;profile=mcp-app`, the MCP Apps extension, SEP-1865): one self-contained card that renders any of the five results (open loops, *recorded as…*, *ask again at 13:00*, today's summary, paused). Tools reference it in their definitions (`_meta.ui.resourceUri`, as the MCP Apps spec places it) and in their results (`_meta.ui` with `resourceUri`, `invoking`, `invoked`, as Alexa+'s lifecycle docs show). The card makes no network requests, so it runs under the spec's restrictive default CSP. The simulator advertises `io.modelcontextprotocol/ui`, reads the resource, and renders the card in a sandboxed iframe through the `ui/initialize` → `tool-input` → `tool-result` handshake. (Simplification: one sandboxed frame with an opaque origin, rather than the spec's two-level sandbox proxy on a separate origin.) Clients without UI support simply read the text.
+**MCP App card.** The server also publishes `ui://closed-loop/checkin-card` (`text/html;profile=mcp-app`, the MCP Apps extension, SEP-1865): one self-contained card that renders any of the six results (open loops, *recorded as…*, *ask again at 13:00*, today's summary, paused, and the family's view of the day). Tools reference it in their definitions (`_meta.ui.resourceUri`, as the MCP Apps spec places it) and in their results (`_meta.ui` with `resourceUri`, `invoking`, `invoked`, as Alexa+'s lifecycle docs show). The card makes no network requests, so it runs under the spec's restrictive default CSP. The simulator advertises `io.modelcontextprotocol/ui`, reads the resource, and renders the card in a sandboxed iframe through the `ui/initialize` → `tool-input` → `tool-result` handshake. (Simplification: one sandboxed frame with an opaque origin, rather than the spec's two-level sandbox proxy on a separate origin.) Clients without UI support simply read the text.
 
 **Protocol behaviors, tested** (`spikes/handshake.sh`, `test/mcp-protocol.test.ts`):
 
@@ -122,9 +124,14 @@ Every tool returns `structuredContent` plus a short text fallback. Signatures ar
 **Account linking (OAuth 2.1), as the Alexa+ add-on docs describe it:**
 
 - **Authorization code + PKCE** for user-level access (`mcp:tools`, `mcp:resources`). `S256` is required, `resource` must be this server's `/mcp` URI, redirect URIs are matched exactly, and the response carries `iss`. To link, the person enters a one-time **link code** that the family creates in the caregiver console (8 characters, single use, 10 minutes, stored only as a hash).
+- **Two roles.** The console creates a link code either for the person's own Alexa or for a family member's. The role rides in the authorization code, the refresh token and the access token (`role: family`); family tokens get a tool error from every tool that answers, defers or pauses a check-in, and can call `get_family_summary`.
 - **Client credentials** for service-level access (`mcp:service`): it can `initialize` and list tools, but a tool call gets Alexa's documented `401 {"error":"unauthorized","message":"Access token required to use this tool."}`. No refresh token is issued.
 - **Tokens:** JWT access tokens (HS256, at most 3600 s, audience = the `/mcp` URI) and a rotating refresh token with every user access token; refresh tokens can be revoked (RFC 7009) or unlinked from the console. Static client registration (Alexa+ does not support DCR); clients authenticate with HTTP Basic or POST-body credentials.
 - **Two clients are registered:** `alexa-plus` (confidential; redirect URIs from `alexa-ai configure-account-linking` go in `ALEXA_REDIRECT_URIS`) and `simulator` (public, PKCE only, same-origin redirect). The simulator's **Link with OAuth 2.1** button runs the full flow and then uses the OAuth token for its MCP calls. The static demo bearer token still works for MCP Inspector and scripts.
+
+## Agent Skill
+
+[`skills/closed-loop-checkins/SKILL.md`](skills/closed-loop-checkins/SKILL.md) packages the check-in protocol for any agent connected to the server: how to map replies to responses (hedges are `unsure`, never `done`), what to do with a calming line or the 911 line, the words never to use, and how to answer a family member. With Claude Code: `claude mcp add --transport http closed-loop <url>/mcp --header "Authorization: Bearer $MCP_BEARER_TOKEN"`, then copy the folder to `~/.claude/skills/`.
 
 ## Safety and honesty, by design
 
@@ -158,7 +165,7 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 96 tests: state machine, ladder, safety eval, stores, MCP protocol, OAuth, classifier
+npm test            # 109 tests: state machine, ladder, safety eval, stores, MCP protocol, OAuth, planner, classifier
 npm run typecheck
 npm run e2e         # replays the demo against a running deployment and checks the ledger
 ```

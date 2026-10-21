@@ -14,6 +14,8 @@ import {
   lintCheckinText,
   loadPlan,
   localDate,
+  newOccurrence,
+  zonedInstant,
   localDateTime,
   localTime,
   now as clockNow,
@@ -139,6 +141,14 @@ export function createApiHandler(cfg: ApiConfig) {
       store.listUtterances(id),
     ]);
     const defById = new Map(defs.map((d) => [d.id, d]));
+    // Today's windows that nothing has touched yet still belong in the ledger, as "not asked yet".
+    const have = new Set(occs.map((o) => o.id));
+    for (const def of plan.checkins) {
+      def.windows.forEach((_, idx) => {
+        const v = newOccurrence(id, def, today, idx, tz, now);
+        if (!have.has(v.id) && new Date(v.windowEnd) > new Date(def.createdAt)) occs.push(v);
+      });
+    }
     const contactName = (cid: string) => plan.household.contacts.find((c) => c.id === cid)?.name;
     const items = occs
       .sort((a, b) => b.date.localeCompare(a.date) || a.windowStart.localeCompare(b.windowStart))
@@ -303,6 +313,14 @@ export function createApiHandler(cfg: ApiConfig) {
         });
       }
       if (path === '/admin/tick' && req.method === 'POST') return json(200, await cfg.runTick(origin));
+      if (path === '/admin/demo-start' && req.method === 'POST') {
+        // Moves the simulated clock to 7:55 am tomorrow (household time) and re-creates the demo household.
+        const tz = (await store.getHousehold('demo'))?.timezone ?? 'America/New_York';
+        const target = zonedInstant(addDays(localDate(new Date(), tz), 1), '07:55', tz);
+        await store.setClockOffsetSeconds(Math.round((target.getTime() - Date.now()) / 1000));
+        await cfg.seed();
+        return json(200, { now: (await clockNow(store)).toISOString(), localNow: localDateTime(await clockNow(store), tz) });
+      }
       if (path === '/admin/seed' && req.method === 'POST') {
         await cfg.seed();
         return json(200, { ok: true });

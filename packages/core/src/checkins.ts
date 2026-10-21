@@ -166,7 +166,11 @@ export async function getDueCheckins(store: Store, householdId: HouseholdId): Pr
       };
     }),
   );
-  const checkins = served.filter((x): x is DueCheckin => !!x);
+  // Follow-ups the person asked for ("after lunch") come first, then by window start.
+  const start = new Map(occs.map((o) => [o.id, o.windowStart]));
+  const checkins = served
+    .filter((x): x is DueCheckin => !!x)
+    .sort((a, b) => Number(b.isFollowUp) - Number(a.isFollowUp) || start.get(a.occurrenceId)!.localeCompare(start.get(b.occurrenceId)!));
   const first = checkins[0];
   const say = first ? first.prompt : spoken.noneDue;
   return { checkins, paused: false, say };

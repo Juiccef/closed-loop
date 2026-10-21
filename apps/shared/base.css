@@ -1,0 +1,307 @@
+/* Closed Loop: shared tokens. Warm paper and ink; terracotta only for "needs attention".
+   Status is always carried by shape and words as well as color. */
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Fraunces:opsz,wght,SOFT@9..144,400..700,50..100&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --paper: #f5efe3;
+  --paper-2: #ece4d3;
+  --card: #fffaf0;
+  --ink: #1f2a2c;
+  --ink-2: #4a5557;
+  --rule: #d8ccb4;
+  --sage: #3f6b4f;
+  --sage-soft: #dfe9dc;
+  --ochre: #8a5a12;
+  --ochre-soft: #f3e3c2;
+  --terra: #b2441f;
+  --terra-soft: #f6dccf;
+  --slate: #3d5a80;
+  --focus: #0b57d0;
+  --code-bg: #182022;
+  --code-ink: #e6e1d6;
+  --code-dim: #8b9a96;
+  --radius: 14px;
+  --shadow: 0 1px 0 rgba(31, 42, 44, 0.06), 0 8px 24px -12px rgba(31, 42, 44, 0.25);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Atkinson Hyperlegible', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #12191a;
+    --paper-2: #1a2324;
+    --card: #1e2829;
+    --ink: #efe8da;
+    --ink-2: #b9b2a4;
+    --rule: #34403f;
+    --sage: #8fc29f;
+    --sage-soft: #213328;
+    --ochre: #e2b25c;
+    --ochre-soft: #3a2f1b;
+    --terra: #f08a66;
+    --terra-soft: #3d2219;
+    --slate: #9db7da;
+    --focus: #8ab4ff;
+    --code-bg: #0c1112;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --paper: #12191a;
+  --paper-2: #1a2324;
+  --card: #1e2829;
+  --ink: #efe8da;
+  --ink-2: #b9b2a4;
+  --rule: #34403f;
+  --sage: #8fc29f;
+  --sage-soft: #213328;
+  --ochre: #e2b25c;
+  --ochre-soft: #3a2f1b;
+  --terra: #f08a66;
+  --terra-soft: #3d2219;
+  --slate: #9db7da;
+  --focus: #8ab4ff;
+  --code-bg: #0c1112;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 112.5%; /* 18px: large by default */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  line-height: 1.5;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(178, 68, 31, 0.06), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(63, 107, 79, 0.07), transparent 60%),
+    var(--paper);
+  min-height: 100vh;
+}
+
+/* Paper grain */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.4 0 0 0 0 0.35 0 0 0 0 0.25 0 0 0 .08 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 80;
+  font-weight: 560;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.4em;
+}
+
+a {
+  color: var(--slate);
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  z-index: 10;
+}
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* ---- Buttons ---- */
+.btn {
+  font: inherit;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.6em 1.05em;
+  border-radius: 999px;
+  border: 2px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    background 0.2s ease;
+  min-height: 44px;
+}
+.btn:hover {
+  transform: translateY(-1px);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.btn.warn {
+  background: var(--terra);
+  border-color: var(--terra);
+  color: #fff;
+}
+.btn.small {
+  font-size: 0.85rem;
+  padding: 0.35em 0.8em;
+  min-height: 36px;
+}
+
+/* ---- Notices ---- */
+.notice {
+  font-size: 0.9rem;
+  color: var(--ink-2);
+  border-left: 4px solid var(--ochre);
+  padding: 0.35rem 0.8rem;
+  background: color-mix(in srgb, var(--ochre-soft) 55%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+.stamp {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.5rem;
+  border: 1.5px solid currentColor;
+  border-radius: 4px;
+  transform: rotate(-2deg);
+}
+
+/* ---- The loop glyph: shape + color + text, never color alone ---- */
+.loop {
+  width: 1.6em;
+  height: 1.6em;
+  flex: none;
+  vertical-align: middle;
+}
+.loop circle {
+  fill: none;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+.loop .dot {
+  stroke: none;
+}
+.loop[data-kind='open'] circle.ring {
+  stroke: var(--ochre);
+  stroke-dasharray: 52 100;
+}
+.loop[data-kind='waiting'] circle.ring {
+  stroke: var(--ink-2);
+  stroke-dasharray: 3 5;
+}
+.loop[data-kind='closed'] circle.ring {
+  stroke: var(--sage);
+}
+.loop[data-kind='closed'] .dot {
+  fill: var(--sage);
+}
+.loop[data-kind='alert'] circle.ring {
+  stroke: var(--terra);
+  stroke-dasharray: 40 100;
+}
+.loop[data-kind='human'] circle.ring {
+  stroke: var(--terra);
+}
+.loop[data-kind='human'] .mark {
+  stroke: var(--terra);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.loop[data-kind='acked'] circle.ring {
+  stroke: var(--slate);
+}
+.loop[data-kind='acked'] .dot {
+  fill: var(--slate);
+}
+.loop[data-kind='paused'] circle.ring {
+  stroke: var(--ink-2);
+  stroke-dasharray: 1 6;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.2em 0.7em;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+}
+.pill.ok {
+  color: var(--sage);
+  background: var(--sage-soft);
+}
+.pill.wait {
+  color: var(--ochre);
+  background: var(--ochre-soft);
+}
+.pill.bad {
+  color: var(--terra);
+  background: var(--terra-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

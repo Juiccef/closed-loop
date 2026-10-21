@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Closed Loop Simulator</title>
+    <meta name="description" content="Simulated Alexa+ client calling the Closed Loop MCP server over Streamable HTTP." />
+    <link rel="stylesheet" href="/shared/base.css" />
+    <link rel="stylesheet" href="/simulator/simulator.css" />
+    <script type="module" src="/simulator/simulator.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#say-input">Skip to reply box</a>
+
+    <header class="sim-banner">
+      <a class="brand" href="/" aria-label="Closed Loop home">
+        <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="14" pathLength="100" transform="rotate(-90 20 20)" /></svg>
+        <span>Closed Loop</span>
+      </a>
+      <p class="sim-notice"><span class="stamp">Simulated</span> <span id="simulated-notice"></span></p>
+      <nav aria-label="Pages"><a href="/console/">Caregiver console</a></nav>
+    </header>
+
+    <main class="sim-grid">
+      <section class="panel convo" aria-labelledby="convo-title">
+        <div class="panel-head">
+          <h2 id="convo-title">Conversation</h2>
+          <span class="sub">Margaret, at home · simulated voice assistant</span>
+        </div>
+
+        <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+          <svg viewBox="0 0 120 120">
+            <circle class="orb-track" cx="60" cy="60" r="44" />
+            <circle class="orb-ring" cx="60" cy="60" r="44" pathLength="100" />
+          </svg>
+          <span class="orb-label" id="orb-label">Waiting for someone to start a check-in</span>
+        </div>
+
+        <ol class="captions" id="captions" aria-live="polite" aria-relevant="additions" aria-label="Conversation transcript"></ol>
+
+        <div class="routine">
+          <button id="routine" class="btn" type="button">
+            <span aria-hidden="true">▶</span> <span id="routine-label">Simulate morning routine start</span>
+          </button>
+          <span class="hint">A household routine starts the turn. The add-on cannot speak first.</span>
+        </div>
+
+        <form id="say-form" class="say" autocomplete="off">
+          <label for="say-input">What Margaret says</label>
+          <div class="say-row">
+            <input id="say-input" name="say" maxlength="200" placeholder="Type a reply, or pick one below" />
+            <button type="button" id="mic" class="btn ghost" aria-pressed="false" hidden>
+              <span aria-hidden="true">●</span> Speak
+            </button>
+            <button class="btn" type="submit">Send</button>
+          </div>
+        </form>
+
+        <div class="chips" role="group" aria-label="Example replies">
+          <button type="button" class="chip" data-say="I think so, maybe after lunch">“I think so, maybe after lunch”</button>
+          <button type="button" class="chip" data-say="Yes, done.">“Yes, done.”</button>
+          <button type="button" class="chip" data-say="Not yet.">“Not yet.”</button>
+          <button type="button" class="chip" data-say="How am I doing today?">“How am I doing today?”</button>
+          <button type="button" class="chip" data-say="I want to go home. Where is everyone?">“I want to go home. Where is everyone?”</button>
+          <button type="button" class="chip" data-say="I fell and I can't get up.">“I fell and I can't get up.”</button>
+          <button type="button" class="chip" data-say="Pause my check-ins for today.">“Pause my check-ins for today.”</button>
+        </div>
+
+        <label class="toggle"><input type="checkbox" id="speak-toggle" /> Read assistant lines aloud (browser voice)</label>
+      </section>
+
+      <section class="panel state" aria-label="Clock, check-ins, and family email">
+        <div class="clock" aria-labelledby="clock-title">
+          <h2 id="clock-title" class="visually-hidden">Simulated clock</h2>
+          <p class="clock-day" id="clock-day">…</p>
+          <p class="clock-time" id="clock-time" aria-live="polite">…</p>
+          <p class="clock-sub"><span class="stamp">Simulated time</span> <span id="clock-offset"></span></p>
+          <div class="clock-buttons" role="group" aria-label="Move the simulated clock">
+            <button class="btn ghost small" type="button" data-adv="3600">+1 hour</button>
+            <button class="btn ghost small" type="button" data-adv="18000">+5 hours</button>
+            <button class="btn ghost small" type="button" data-adv="86400">+1 day</button>
+            <button class="btn ghost small" type="button" data-reset>Reset</button>
+          </div>
+          <button class="btn small demo-start" type="button" id="demo-start">Start a fresh demo day at 7:55 am</button>
+          <p class="clock-note">Moving the clock runs the same tick that EventBridge Scheduler runs every minute.</p>
+        </div>
+
+        <div class="loops-block">
+          <h2>Today’s loops</h2>
+          <ul class="loops" id="loops" aria-live="polite"></ul>
+        </div>
+
+        <div class="mail-block">
+          <h2>Family email</h2>
+          <ul class="mail" id="mail" aria-live="polite"></ul>
+        </div>
+      </section>
+
+      <section class="panel traffic" aria-labelledby="traffic-title">
+        <div class="panel-head">
+          <h2 id="traffic-title">MCP traffic</h2>
+          <span class="sub" id="traffic-sub">POST /mcp · Streamable HTTP · stateless</span>
+        </div>
+        <ol class="traffic-list" id="traffic" aria-label="Requests and responses, newest first"></ol>
+      </section>
+    </main>
+
+    <footer class="sim-foot">
+      <p id="scope-notice"></p>
+      <p id="voice-notice"></p>
+    </footer>
+  </body>
+</html>

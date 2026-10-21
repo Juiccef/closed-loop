@@ -93,6 +93,7 @@ describe('recording: honest wording and the safety layer', () => {
     setLocal('2026-10-19 13:00');
     const follow = await getDueCheckins(store, H);
     expect(follow.checkins.map((c) => c.occurrenceId)).toEqual([MORNING]);
+    expect(follow.say).toBe('Just checking again about your morning routine. Is that done now?');
     expect(follow.checkins[0]?.isFollowUp).toBe(true);
     const r = await recordResponse(store, H, { occurrenceId: MORNING, response: 'done', utterance: 'Yes, done.' });
     expect(r.recordedWording).toBe('reported by the person');
@@ -113,6 +114,15 @@ describe('recording: honest wording and the safety layer', () => {
     const note = mailer.sent.find((m) => m.kind === 'needs_human');
     expect(note?.to).toBe('dana@example.com');
     expect(note?.text).toContain('Margaret seemed confused or upset during a check-in. A call may help.');
+  });
+
+  it('a requested follow-up is asked before a newly opened check-in', async () => {
+    const { store } = await demo();
+    setLocal('2026-10-19 08:00');
+    await getDueCheckins(store, H);
+    await deferCheckin(store, H, { occurrenceId: MORNING, until: 'after_lunch' });
+    setLocal('2026-10-19 13:30');
+    expect((await getDueCheckins(store, H)).checkins.map((c) => c.occurrenceId)).toEqual([MORNING, LUNCH]);
   });
 
   it('distress: no check-ins are asked for 60 minutes afterwards', async () => {

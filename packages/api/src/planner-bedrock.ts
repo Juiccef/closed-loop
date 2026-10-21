@@ -4,7 +4,7 @@
 // Status: written against the Converse API types; live calls are blocked on this account (FRICTION_LOG #7).
 
 import type { BedrockRuntimeClient, Tool } from '@aws-sdk/client-bedrock-runtime';
-import { rulesPlanner, type PlannerRequest, type PlannerResponse } from './planner';
+import { rulesPlanner, safetyPlan, type PlannerRequest, type PlannerResponse } from './planner';
 
 // Loaded on first use so MCP cold starts do not pay for the Bedrock SDK.
 // One attempt: a throttled or failed call falls back to rules immediately instead of retrying.
@@ -60,6 +60,8 @@ export async function bedrockPlanner(req: PlannerRequest, modelId: string): Prom
 
 export async function bedrockOrRulesPlanner(body: unknown): Promise<PlannerResponse> {
   const req = (body ?? {}) as PlannerRequest;
+  const safety = safetyPlan(req); // deterministic safety rules always run before the model
+  if (safety) return safety;
   const modelId = process.env.BEDROCK_MODEL_ID;
   if (!modelId) return rulesPlanner(req);
   if (!req.tools?.length) {

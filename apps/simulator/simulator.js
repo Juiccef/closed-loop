@@ -3,7 +3,7 @@
 
 import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph } from '/shared/app.js';
 
-const state = { queue: [], current: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map() };
+const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map() };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -165,6 +165,7 @@ function traffic(entry) {
 
 function askNext() {
   state.current = state.queue[0] || null;
+  if (state.current) state.recent = { occurrenceId: state.current.occurrenceId, label: state.current.label };
   if (state.current) setTimeout(() => say(state.current.prompt), 700);
   else orb('closed', 'Nothing else due right now');
 }
@@ -172,6 +173,7 @@ function askNext() {
 function handleDue(sc, r) {
   state.queue = sc.checkins || [];
   state.current = state.queue[0] || null;
+  if (state.current) state.recent = { occurrenceId: state.current.occurrenceId, label: state.current.label };
   say(sc.say, (r && mountCard('get_due_checkins', {}, r)) || '');
   if (!state.current) orb('closed', 'Nothing due right now');
 }
@@ -204,7 +206,12 @@ async function personSays(text) {
   const started = performance.now();
   const plan = await api('/planner', {
     method: 'POST',
-    body: { userText: t, current: state.current && { occurrenceId: state.current.occurrenceId, label: state.current.label, prompt: state.current.prompt }, tools: state.mcp.tools },
+    body: {
+      userText: t,
+      current: state.current && { occurrenceId: state.current.occurrenceId, label: state.current.label, prompt: state.current.prompt },
+      recent: state.recent,
+      tools: state.mcp.tools,
+    },
   });
   traffic({
     kind: 'planner',
@@ -274,6 +281,7 @@ async function moveClock(body, label) {
     traffic({ kind: 'tick', tag: 'tick', title: `clock ${label} → tick`, meta: parts.join(' · ') || 'nothing to close', body: r });
     state.queue = [];
     state.current = null;
+    state.recent = null;
     await loadClock();
     $('#clock-time').classList.remove('flash');
     void $('#clock-time').offsetWidth;

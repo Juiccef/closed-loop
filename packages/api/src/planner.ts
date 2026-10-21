@@ -2,12 +2,14 @@
 // The browser executes the call against the MCP server, so the traffic stays real and visible.
 // Rules planner: deterministic fallback (and the default until Bedrock is available).
 
-import { normalizeUtterance, type CheckinResponse, type DeferUntil } from '@closed-loop/core';
+import { CRISIS_REPLY, SELF_HARM_REPLY, applySafety, normalizeUtterance, type CheckinResponse, type DeferUntil } from '@closed-loop/core';
 
 export interface PlannerRequest {
   userText: string;
   /** The check-in the person is answering, if any. */
   current?: { occurrenceId: string; label: string; prompt: string } | null;
+  /** The most recent check-in in this conversation, even if no longer being asked (e.g. after distress). */
+  recent?: { occurrenceId: string; label?: string } | null;
   history?: Array<{ role: 'user' | 'assistant'; text: string }>;
   /** MCP tools/list result, passed through so an LLM planner can use the real tool schemas. */
   tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
@@ -55,8 +57,33 @@ export function classifyReply(text: string): CheckinResponse {
   return 'unsure'; // fail closed
 }
 
+/**
+ * Safety first, before any rules or model: emergency or distress wording always reaches the server's safety
+ * layer (which answers with the 911 line or the family's calming words and queues the family note), even when
+ * no check-in is being asked. With no check-in at all, the fixed emergency line is returned directly.
+ */
+export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
+  const raw = String(req.userText ?? '').slice(0, 200);
+  const s = applySafety('unsure', raw);
+  if (s.branch === 'none') return null;
+  const target = req.current ?? req.recent ?? null;
+  if (target) {
+    return {
+      planner: 'rules',
+      toolCall: { name: 'record_response', arguments: { occurrenceId: target.occurrenceId, response: 'needs_help', utterance: raw } },
+      rationale: `${s.branch} wording: safety rule runs before any model`,
+    };
+  }
+  if (s.branch === 'crisis') {
+    return { planner: 'rules', toolCall: null, reply: s.selfHarm ? SELF_HARM_REPLY : CRISIS_REPLY, rationale: 'emergency wording with no check-in: fixed reply' };
+  }
+  return null;
+}
+
 export function rulesPlanner(body: unknown): PlannerResponse {
   const req = (body ?? {}) as PlannerRequest;
+  const safety = safetyPlan(req);
+  if (safety) return safety;
   const raw = String(req.userText ?? '').slice(0, 200);
   const t = normalizeUtterance(raw);
   const current = req.current ?? null;

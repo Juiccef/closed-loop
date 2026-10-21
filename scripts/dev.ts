@@ -17,8 +17,10 @@ const APPS = join(import.meta.dirname, '..', 'apps');
 
 const store = new MemoryStore();
 const mailer = new RecordingMailer(new FileMailer(join(process.cwd(), 'out', 'emails')));
-const seed = async () =>
-  seedDemoHousehold(store, { now: await now(store), l1Email: 'dana@example.com', l2Email: 'sam@example.com', demoMode: true });
+const seed = async () => {
+  mailer.sent.length = 0; // a fresh demo day starts with an empty email panel
+  await seedDemoHousehold(store, { now: await now(store), l1Email: 'dana@example.com', l2Email: 'sam@example.com', demoMode: true });
+};
 const tick = (origin: string) => runTick(store, { mailer, ackUrl: ackUrlBuilder(origin, ACK_SECRET) });
 
 await seed();

@@ -14,7 +14,9 @@
     "build": "tsx scripts/build.ts",
     "test": "vitest run",
     "typecheck": "tsx scripts/gen-static.ts && tsc -p tsconfig.json --noEmit",
-    "deploy": "scripts/deploy.sh"
+    "deploy": "scripts/deploy.sh",
+    "e2e": "tsx scripts/e2e.ts",
+    "second-client": "tsx scripts/second-client.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1154.0",

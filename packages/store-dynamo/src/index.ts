@@ -1,0 +1,280 @@
+import { ConditionalCheckFailedException, DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  BatchWriteCommand,
+  DeleteCommand,
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  UpdateCommand,
+  type QueryCommandInput,
+} from '@aws-sdk/lib-dynamodb';
+import {
+  ConflictError,
+  DEFAULT_LADDER,
+  EVENT_TTL_DAYS,
+  UTTERANCE_TTL_DAYS,
+  clip,
+  keys,
+  randomSuffix,
+  type AuditEvent,
+  type CheckinDefinition,
+  type ConsentRecord,
+  type Household,
+  type HouseholdId,
+  type LadderConfig,
+  type Occurrence,
+  type Store,
+  type Utterance,
+} from '@closed-loop/core';
+
+type Item = Record<string, unknown>;
+
+const DAY_S = 86_400;
+const ttlFrom = (iso: string, days: number) => Math.floor(new Date(iso).getTime() / 1000) + days * DAY_S;
+const ttlFromDate = (date: string, days: number) => ttlFrom(`${date}T00:00:00Z`, days);
+
+/** Removes the key and bookkeeping attributes before handing an item back as an entity. */
+function entity<T>(item: Item | undefined): T | undefined {
+  if (!item) return undefined;
+  const { PK: _pk, SK: _sk, T: _t, ttl: _ttl, ...rest } = item;
+  return rest as T;
+}
+
+export class DynamoStore implements Store {
+  private readonly doc: DynamoDBDocumentClient;
+
+  constructor(
+    private readonly table: string,
+    client?: DynamoDBClient,
+  ) {
+    this.doc = DynamoDBDocumentClient.from(client ?? new DynamoDBClient({}), {
+      marshallOptions: { removeUndefinedValues: true },
+    });
+  }
+
+  private async get(key: Item): Promise<Item | undefined> {
+    const res = await this.doc.send(new GetCommand({ TableName: this.table, Key: key }));
+    return res.Item;
+  }
+
+  private async put(item: Item): Promise<void> {
+    await this.doc.send(new PutCommand({ TableName: this.table, Item: item }));
+  }
+
+  private async queryAll(input: Omit<QueryCommandInput, 'TableName'>): Promise<Item[]> {
+    const out: Item[] = [];
+    let start: Record<string, unknown> | undefined;
+    do {
+      const res = await this.doc.send(new QueryCommand({ TableName: this.table, ...input, ExclusiveStartKey: start }));
+      out.push(...(res.Items ?? []));
+      start = res.LastEvaluatedKey;
+    } while (start);
+    return out;
+  }
+
+  private prefix(id: HouseholdId, prefix: string, forward = true, limit?: number) {
+    return {
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :p)',
+      ExpressionAttributeValues: { ':pk': `H#${id}`, ':p': prefix },
+      ScanIndexForward: forward,
+      Limit: limit,
+    };
+  }
+
+  // ---- Clock ----
+
+  async getClockOffsetSeconds() {
+    const item = await this.get(keys.clock());
+    return typeof item?.offsetSeconds === 'number' ? item.offsetSeconds : 0;
+  }
+  async setClockOffsetSeconds(seconds: number) {
+    await this.put({ ...keys.clock(), T: 'clock', offsetSeconds: seconds });
+  }
+
+  // ---- Household ----
+
+  async getHousehold(id: HouseholdId) {
+    return entity<Household>(await this.get(keys.household(id)));
+  }
+  async putHousehold(h: Household) {
+    await Promise.all([
+      this.put({ ...keys.household(h.id), T: 'household', ...h }),
+      this.put({ ...keys.registry(h.id), T: 'registry', householdId: h.id }),
+    ]);
+  }
+  async listHouseholdIds() {
+    const items = await this.queryAll({
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': 'REGISTRY' },
+    });
+    return items.map((i) => String(i.householdId)).sort();
+  }
+
+  // ---- Consent ----
+
+  async listConsents(id: HouseholdId) {
+    const items = await this.queryAll(this.prefix(id, 'CONSENT#', false));
+    return items.map((i) => entity<ConsentRecord>(i)!);
+  }
+  async putConsent(id: HouseholdId, c: ConsentRecord) {
+    await this.put({ ...keys.consent(id, c.recordedAt), T: 'consent', ...c });
+  }
+
+  // ---- Check-in definitions ----
+
+  async listCheckins(id: HouseholdId) {
+    const items = await this.queryAll(this.prefix(id, 'CHK#'));
+    return items.map((i) => entity<CheckinDefinition>(i)!);
+  }
+  async putCheckin(id: HouseholdId, def: CheckinDefinition) {
+    await this.put({ ...keys.checkin(id, def.id), T: 'checkin', ...def });
+  }
+  async deleteCheckin(id: HouseholdId, checkinId: string) {
+    await this.doc.send(new DeleteCommand({ TableName: this.table, Key: keys.checkin(id, checkinId) }));
+  }
+
+  // ---- Ladder ----
+
+  async getLadder(id: HouseholdId) {
+    return entity<LadderConfig>(await this.get(keys.ladder(id))) ?? structuredClone(DEFAULT_LADDER);
+  }
+  async putLadder(id: HouseholdId, ladder: LadderConfig) {
+    await this.put({ ...keys.ladder(id), T: 'ladder', ...ladder });
+  }
+
+  // ---- Occurrences ----
+
+  async getOccurrence(id: HouseholdId, occurrenceId: string) {
+    return entity<Occurrence>(await this.get(keys.occurrence(id, occurrenceId)));
+  }
+  async listOccurrences(id: HouseholdId, fromDate: string, toDate = fromDate) {
+    const items = await this.queryAll({
+      KeyConditionExpression: 'PK = :pk AND SK BETWEEN :a AND :b',
+      ExpressionAttributeValues: { ':pk': `H#${id}`, ':a': `OCC#${fromDate}`, ':b': `OCC#${toDate}~` },
+    });
+    return items.map((i) => entity<Occurrence>(i)!);
+  }
+  async createOccurrence(occ: Occurrence) {
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.table,
+          Item: { ...keys.occurrence(occ.householdId, occ.id), T: 'occurrence', ...occ },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        }),
+      );
+      return true;
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return false;
+      throw err;
+    }
+  }
+  async updateOccurrence(next: Occurrence, expectedVersion: number) {
+    try {
+      await this.doc.send(
+        new PutCommand({
+          TableName: this.table,
+          Item: { ...keys.occurrence(next.householdId, next.id), T: 'occurrence', ...next },
+          ConditionExpression: '#v = :expected',
+          ExpressionAttributeNames: { '#v': 'version' },
+          ExpressionAttributeValues: { ':expected': expectedVersion },
+        }),
+      );
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) throw new ConflictError(next.id);
+      throw err;
+    }
+  }
+
+  // ---- Utterances (30-day TTL) ----
+
+  async putUtterance(u: Utterance) {
+    await this.put({
+      ...keys.utterance(u.householdId, u.occurrenceId, u.at),
+      T: 'utterance',
+      ...u,
+      text: clip(u.text),
+      ttl: ttlFrom(u.at, UTTERANCE_TTL_DAYS),
+    });
+  }
+  async listUtterances(id: HouseholdId, occurrenceId?: string) {
+    const items = await this.queryAll(this.prefix(id, occurrenceId ? `UTT#${occurrenceId}#` : 'UTT#'));
+    return items.map((i) => entity<Utterance>(i)!);
+  }
+  async markUtteranceReviewed(id: HouseholdId, occurrenceId: string, at: string) {
+    await this.doc.send(
+      new UpdateCommand({
+        TableName: this.table,
+        Key: keys.utterance(id, occurrenceId, at),
+        UpdateExpression: 'SET reviewed = :t',
+        ConditionExpression: 'attribute_exists(PK)',
+        ExpressionAttributeValues: { ':t': true },
+      }),
+    ).catch((err) => {
+      if (!(err instanceof ConditionalCheckFailedException)) throw err;
+    });
+  }
+
+  // ---- Audit events (90-day TTL) ----
+
+  async appendEvent(e: AuditEvent) {
+    await this.put({
+      ...keys.event(e.householdId, e.at, randomSuffix()),
+      T: 'event',
+      ...e,
+      detail: clip(e.detail),
+      ttl: ttlFrom(e.at, EVENT_TTL_DAYS),
+    });
+  }
+  async listEvents(id: HouseholdId, limit: number) {
+    const res = await this.doc.send(new QueryCommand({ TableName: this.table, ...this.prefix(id, 'EVT#', false, limit) }));
+    return (res.Items ?? []).map((i) => entity<AuditEvent>(i)!);
+  }
+
+  // ---- Daily alert cap ----
+
+  async tryConsumeAlert(id: HouseholdId, date: string, cap: number) {
+    try {
+      await this.doc.send(
+        new UpdateCommand({
+          TableName: this.table,
+          Key: keys.alertCap(id, date),
+          UpdateExpression: 'ADD #c :one SET #t = :t, #ttl = :ttl',
+          ConditionExpression: 'attribute_not_exists(#c) OR #c < :cap',
+          ExpressionAttributeNames: { '#c': 'count', '#t': 'T', '#ttl': 'ttl' },
+          ExpressionAttributeValues: { ':one': 1, ':cap': cap, ':t': 'cap', ':ttl': ttlFromDate(date, 3) },
+        }),
+      );
+      return true;
+    } catch (err) {
+      if (err instanceof ConditionalCheckFailedException) return false;
+      throw err;
+    }
+  }
+  async getAlertCount(id: HouseholdId, date: string) {
+    const item = await this.get(keys.alertCap(id, date));
+    return typeof item?.count === 'number' ? item.count : 0;
+  }
+
+  // ---- Delete my data ----
+
+  async deleteHousehold(id: HouseholdId) {
+    const items = await this.queryAll({
+      KeyConditionExpression: 'PK = :pk',
+      ExpressionAttributeValues: { ':pk': `H#${id}` },
+      ProjectionExpression: 'PK, SK',
+    });
+    const allKeys = [...items.map((i) => ({ PK: i.PK, SK: i.SK })), keys.registry(id)];
+    for (let i = 0; i < allKeys.length; i += 25) {
+      let batch: Item[] = allKeys.slice(i, i + 25).map((Key) => ({ DeleteRequest: { Key } }));
+      for (let attempt = 0; batch.length && attempt < 5; attempt++) {
+        const res = await this.doc.send(new BatchWriteCommand({ RequestItems: { [this.table]: batch } }));
+        batch = (res.UnprocessedItems?.[this.table] ?? []) as Item[];
+        if (batch.length) await new Promise((r) => setTimeout(r, 50 * 2 ** attempt));
+      }
+      if (batch.length) throw new Error(`delete incomplete: ${batch.length} items left`);
+    }
+    return allKeys.length;
+  }
+}

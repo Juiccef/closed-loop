@@ -140,7 +140,7 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 | User identity header/claim | Not documented on auth page; refers to Account Linking page | Unverified, to read |
 | Routines invoke an add-on | Not documented | Entry 4 |
 | Tool creates native reminder | Not documented | Entry 4 |
-| `_meta.ui` / MCP Apps | Documented: tool result `_meta.ui` with `resourceUri` (e.g. `ui://...`), `invoking`, `invoked`; data-only fallback | Lifecycle page. ext-apps with SDK 1.x: not yet tested |
+| `_meta.ui` / MCP Apps | Alexa+ shows `_meta.ui` (`resourceUri`, `invoking`, `invoked`) in the **tool result**; the MCP Apps spec (SEP-1865) puts `_meta.ui.resourceUri` on the **tool definition**. We set both. | Verified: SDK 1.32.1 `registerTool` accepts `_meta`, `registerResource` serves `text/html;profile=mcp-app`, and `initialize` accepts `capabilities.extensions['io.modelcontextprotocol/ui']`. Rendering in real Alexa+: untested (partner-only) |
 | Elicitation | Alexa+ uses MCP elicitation when it cannot fill missing details itself | Lifecycle page. We still do not use server-initiated elicitation |
 | Bedrock model IDs | Listed ACTIVE in us-east-1: `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5` (inference profiles) | `list-inference-profiles`. Invocation blocked: daily token quota 0 / not available for account (entry 7). Prices: to check |
 | Crisis wording policy | "Redirect apparent references to personal crises or suicidal intent to emergency services or crisis hotlines." | Policy Requirements, Sec. 13. Added 988 line for self-harm wording |

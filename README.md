@@ -90,6 +90,7 @@ flowchart LR
 - **MCP tool calls touch DynamoDB only.** No LLM and no network call on the hot path. Warm round trips measured 9 ms p50 / 33 ms p95 server-side (Alexa+ requires under 500 ms).
 - **The tick cannot speak to anyone in the home.** It closes windows, decides who to tell, and sends email. Every alert is claimed with a conditional write before sending, so overlapping ticks never double-send.
 - **The planner stands in for Alexa+'s own LLM.** The browser asks it which tool to call, then makes the MCP call itself, so the traffic you see is real. It uses Bedrock (Converse with the live `tools/list` as tool definitions) and falls back to rules, saying so in the traffic pane.
+- **Results come with a card.** An MCP App (`ui://` resource) renders each result visually wherever the client supports MCP Apps.
 - **A second opinion runs after the fact.** New utterances flow through DynamoDB Streams to a classifier that asks Bedrock to re-read them. It can only move a record toward caution: distress it hears escalates to *needs human contact*; a "done" it doubts gets flagged in the console.
 
 More detail: [docs/architecture.md](docs/architecture.md).
@@ -107,6 +108,8 @@ Self-hosted, **Streamable HTTP**, stateless (no `Mcp-Session-Id`), JSON response
 | `pause_checkins` | `scope` (`today` · `24_hours`) | Always honored, no questions asked. |
 
 Every tool returns `structuredContent` plus a short text fallback. Signatures are fixed, strings are bounded, choices are enums (Alexa+ refreshes tool definitions only on deployment).
+
+**MCP App card.** The server also publishes `ui://closed-loop/checkin-card` (`text/html;profile=mcp-app`, the MCP Apps extension, SEP-1865): one self-contained card that renders any of the five results (open loops, *recorded as…*, *ask again at 13:00*, today's summary, paused). Tools reference it in their definitions (`_meta.ui.resourceUri`, as the MCP Apps spec places it) and in their results (`_meta.ui` with `resourceUri`, `invoking`, `invoked`, as Alexa+'s lifecycle docs show). The card makes no network requests, so it runs under the spec's restrictive default CSP. The simulator advertises `io.modelcontextprotocol/ui`, reads the resource, and renders the card in a sandboxed iframe through the `ui/initialize` → `tool-input` → `tool-result` handshake. (Simplification: one sandboxed frame with an opaque origin, rather than the spec's two-level sandbox proxy on a separate origin.) Clients without UI support simply read the text.
 
 **Protocol behaviors, tested** (`spikes/handshake.sh`, `test/mcp-protocol.test.ts`):
 
@@ -148,7 +151,7 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 81 tests: state machine, ladder, safety eval, stores, MCP protocol, classifier
+npm test            # 82 tests: state machine, ladder, safety eval, stores, MCP protocol, classifier
 npm run typecheck
 npm run e2e         # replays the demo against a running deployment and checks the ledger
 ```

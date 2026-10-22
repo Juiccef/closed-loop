@@ -21,6 +21,10 @@ Daily check-ins for people living alone: an Alexa+ MCP add-on that records what 
 
 ### Inspiration
 
+My grandmother had severe dementia. Toward the end she would forget our names and where she was. She fell once and was badly hurt, and we had to move her into an elder care facility because she needed more watching over than we could give her. Having something like this would have helped us when she was still with us.
+
+Closed Loop wouldn't have stopped that fall, and it can't replace care. It's for the stretch before that, when someone still lives at home and mostly manages on their own, and the family needs to know each day whether things are okay, and to hear about it when they're not.
+
 An estimated **7.4 million** Americans 65 and older are living with Alzheimer's, and **1 in 4** older Americans with dementia or mild cognitive impairment lives alone. **Nearly 13 million** family members and friends give them unpaid care, often from another town. Amazon's own remote-caregiving service, Alexa Together, is **no longer available**. (Sources in `docs/impact.md`: Alzheimer's Association 2026 Facts and Figures; UCSF, JAMA Network Open 2023; Amazon, May 2025.)
 
 Families improvise: an Alexa reminder, then a phone call to check. A reminder can ask the question, but it never learns whether the loop closed. And for someone with memory changes, a voice "yes" is not ground truth: "I think so, maybe after lunch" is not done.

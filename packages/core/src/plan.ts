@@ -1,4 +1,4 @@
-import { addDays, localDate, now as clockNow, zonedInstant } from './clock';
+import { addDays, clockAt, localDate, zonedInstant } from './clock';
 import {
   occurrenceId,
   type CheckinDefinition,
@@ -9,6 +9,7 @@ import {
   type Occurrence,
 } from './model';
 import type { Store } from './store';
+import { ownClockOffset } from './visitor';
 
 export type PlanStatus = 'active' | 'no_household' | 'no_consent' | 'revoked' | 'expired' | 'paused';
 
@@ -41,15 +42,19 @@ export function isPaused(h: Household, now: Date): boolean {
   return !!h.pausedUntil && new Date(h.pausedUntil) > now;
 }
 
-/** Reads the clock and the whole plan in one parallel round trip. */
+/**
+ * Reads the clock and the whole plan in one parallel round trip. A visitor household's own clock offset
+ * comes with the household record, so it costs no extra read.
+ */
 export async function loadPlan(store: Store, householdId: HouseholdId): Promise<PlanContext> {
-  const [now, household, consents, checkins, ladder] = await Promise.all([
-    clockNow(store),
+  const [deploymentOffset, household, consents, checkins, ladder] = await Promise.all([
+    store.getClockOffsetSeconds(),
     store.getHousehold(householdId),
     store.listConsents(householdId),
     store.listCheckins(householdId),
     store.getLadder(householdId),
   ]);
+  const now = clockAt(ownClockOffset(household) ?? deploymentOffset);
   const plan: Plan | undefined = household
     ? { household, consent: consents[0], checkins: checkins.filter((c) => c.active), ladder }
     : undefined;

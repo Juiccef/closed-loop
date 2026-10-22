@@ -9,8 +9,10 @@ export const SERVER_VERSION = '0.1.0';
 const MAX_BODY_BYTES = 16 * 1024;
 
 export interface McpHttpConfig {
-  /** Static bearer tokens mapped to the household they act for. Stand-in for OAuth 2.1 (out of scope). */
+  /** Static bearer tokens mapped to the household they act for (the demo token, for MCP Inspector and scripts). */
   bearerTokens: Record<string, string>;
+  /** Per-visitor demo tokens (minted with /admin/demo-start): the one visitor household a token acts for, or undefined. */
+  householdBearer?: (bearer: string) => string | undefined;
   /** Browser origins allowed to call the endpoint. Requests with no Origin header are allowed (server-to-server). */
   allowedOrigins: string[];
   /** Also allow pages served from this endpoint's own origin (console and simulator on the same URL). */
@@ -161,7 +163,7 @@ export function createMcpHttpHandler(config: McpHttpConfig, backend: CheckinBack
     if (path !== '/mcp') return json(404, { error: 'not_found' }, cors);
 
     const bearer = bearerOf(req.headers.get('authorization'));
-    const staticId = bearer ? staticHousehold(bearer, config) : undefined;
+    const staticId = bearer ? (staticHousehold(bearer, config) ?? config.householdBearer?.(bearer)) : undefined;
     const access: AccessContext | undefined = staticId
       ? { kind: 'static', householdId: staticId, scopes: [SCOPE_TOOLS] }
       : bearer && config.oauth

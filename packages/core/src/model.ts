@@ -28,6 +28,13 @@ export interface Household {
   lastProcessedDate?: string;
   /** planExpiresAt of the consent whose expiry was already logged, so the notice is written once. */
   expiryNoticeFor?: string;
+  /** Per-visitor demo households only: this household's own simulated clock offset (see clock.ts). */
+  clockOffsetSeconds?: number;
+  /**
+   * Per-visitor demo households only: real time after which the household is gone. DynamoDB TTL deletes it;
+   * reads treat it as deleted from this moment, since TTL deletion can lag.
+   */
+  expiresAt?: string;
 }
 
 export interface ConsentRecord {

@@ -14,9 +14,13 @@ import {
   DEFAULT_LADDER,
   EVENT_TTL_DAYS,
   UTTERANCE_TTL_DAYS,
+  VISITOR_HOURS,
   clip,
+  isExpired,
+  isVisitorHousehold,
   keys,
   randomSuffix,
+  realNow,
   type AuditEvent,
   type CheckinDefinition,
   type ConsentRecord,
@@ -36,6 +40,20 @@ type Item = Record<string, unknown>;
 const DAY_S = 86_400;
 const ttlFrom = (iso: string, days: number) => Math.floor(new Date(iso).getTime() / 1000) + days * DAY_S;
 const ttlFromDate = (date: string, days: number) => ttlFrom(`${date}T00:00:00Z`, days);
+
+/**
+ * Every item of a visitor demo household expires: VISITOR_HOURS after it is written, or sooner if it already would.
+ * Writes stop once the household itself has expired, so nothing of it outlives that by more than VISITOR_HOURS.
+ */
+function ttlFor(id: HouseholdId, ttl?: number): number | undefined {
+  if (!isVisitorHousehold(id)) return ttl;
+  const visitor = Math.floor(realNow() / 1000) + VISITOR_HOURS * 3600;
+  return ttl === undefined ? visitor : Math.min(ttl, visitor);
+}
+const withTtl = (id: HouseholdId): Item => {
+  const ttl = ttlFor(id);
+  return ttl === undefined ? {} : { ttl };
+};
 
 /** Removes the key and bookkeeping attributes before handing an item back as an entity. */
 function entity<T>(item: Item | undefined): T | undefined {
@@ -87,23 +105,33 @@ export class DynamoStore implements Store {
 
   // ---- Clock ----
 
-  async getClockOffsetSeconds() {
+  // Deployment-wide offset in the CLOCK item; a visitor household's own offset on its household record.
+
+  async getClockOffsetSeconds(householdId?: HouseholdId) {
+    if (householdId && isVisitorHousehold(householdId)) {
+      const res = await this.doc.send(new GetCommand({ TableName: this.table, Key: keys.household(householdId), ProjectionExpression: 'clockOffsetSeconds' }));
+      if (typeof res.Item?.clockOffsetSeconds === 'number') return res.Item.clockOffsetSeconds;
+    }
     const item = await this.get(keys.clock());
     return typeof item?.offsetSeconds === 'number' ? item.offsetSeconds : 0;
   }
-  async setClockOffsetSeconds(seconds: number) {
+  async setClockOffsetSeconds(seconds: number, householdId?: HouseholdId) {
+    if (householdId && isVisitorHousehold(householdId)) return this.updateHousehold(householdId, { clockOffsetSeconds: seconds });
     await this.put({ ...keys.clock(), T: 'clock', offsetSeconds: seconds });
   }
 
   // ---- Household ----
 
   async getHousehold(id: HouseholdId) {
-    return entity<Household>(await this.get(keys.household(id)));
+    const h = entity<Household>(await this.get(keys.household(id)));
+    return h && !isExpired(h, realNow()) ? h : undefined;
   }
   async putHousehold(h: Household) {
+    // A visitor household's record and registry entry expire exactly at its expiry (updates never extend it).
+    const expiry: Item = isVisitorHousehold(h.id) && h.expiresAt ? { expiresAt: h.expiresAt, ttl: Math.floor(Date.parse(h.expiresAt) / 1000) } : {};
     await Promise.all([
-      this.put({ ...keys.household(h.id), T: 'household', ...h }),
-      this.put({ ...keys.registry(h.id), T: 'registry', householdId: h.id }),
+      this.put({ ...keys.household(h.id), T: 'household', ...h, ...expiry }),
+      this.put({ ...keys.registry(h.id), T: 'registry', householdId: h.id, ...expiry }),
     ]);
   }
   async updateHousehold(id: HouseholdId, patch: Partial<Omit<Household, 'id'>>) {
@@ -139,7 +167,10 @@ export class DynamoStore implements Store {
       KeyConditionExpression: 'PK = :pk',
       ExpressionAttributeValues: { ':pk': 'REGISTRY' },
     });
-    return items.map((i) => String(i.householdId)).sort();
+    return items
+      .filter((i) => !isExpired({ expiresAt: typeof i.expiresAt === 'string' ? i.expiresAt : undefined }, realNow()))
+      .map((i) => String(i.householdId))
+      .sort();
   }
 
   // ---- Consent ----
@@ -149,7 +180,7 @@ export class DynamoStore implements Store {
     return items.map((i) => entity<ConsentRecord>(i)!);
   }
   async putConsent(id: HouseholdId, c: ConsentRecord) {
-    await this.put({ ...keys.consent(id, c.recordedAt), T: 'consent', ...c });
+    await this.put({ ...keys.consent(id, c.recordedAt), T: 'consent', ...c, ...withTtl(id) });
   }
 
   // ---- Check-in definitions ----
@@ -159,7 +190,7 @@ export class DynamoStore implements Store {
     return items.map((i) => entity<CheckinDefinition>(i)!);
   }
   async putCheckin(id: HouseholdId, def: CheckinDefinition) {
-    await this.put({ ...keys.checkin(id, def.id), T: 'checkin', ...def });
+    await this.put({ ...keys.checkin(id, def.id), T: 'checkin', ...def, ...withTtl(id) });
   }
   async deleteCheckin(id: HouseholdId, checkinId: string) {
     await this.doc.send(new DeleteCommand({ TableName: this.table, Key: keys.checkin(id, checkinId) }));
@@ -171,7 +202,7 @@ export class DynamoStore implements Store {
     return entity<LadderConfig>(await this.get(keys.ladder(id))) ?? structuredClone(DEFAULT_LADDER);
   }
   async putLadder(id: HouseholdId, ladder: LadderConfig) {
-    await this.put({ ...keys.ladder(id), T: 'ladder', ...ladder });
+    await this.put({ ...keys.ladder(id), T: 'ladder', ...ladder, ...withTtl(id) });
   }
 
   // ---- Occurrences ----
@@ -191,7 +222,7 @@ export class DynamoStore implements Store {
       await this.doc.send(
         new PutCommand({
           TableName: this.table,
-          Item: { ...keys.occurrence(occ.householdId, occ.id), T: 'occurrence', ...occ },
+          Item: { ...keys.occurrence(occ.householdId, occ.id), T: 'occurrence', ...occ, ...withTtl(occ.householdId) },
           ConditionExpression: 'attribute_not_exists(PK)',
         }),
       );
@@ -206,7 +237,7 @@ export class DynamoStore implements Store {
       await this.doc.send(
         new PutCommand({
           TableName: this.table,
-          Item: { ...keys.occurrence(next.householdId, next.id), T: 'occurrence', ...next },
+          Item: { ...keys.occurrence(next.householdId, next.id), T: 'occurrence', ...next, ...withTtl(next.householdId) },
           ConditionExpression: '#v = :expected',
           ExpressionAttributeNames: { '#v': 'version' },
           ExpressionAttributeValues: { ':expected': expectedVersion },
@@ -226,7 +257,7 @@ export class DynamoStore implements Store {
       T: 'utterance',
       ...u,
       text: clip(u.text),
-      ttl: ttlFrom(u.at, UTTERANCE_TTL_DAYS),
+      ttl: ttlFor(u.householdId, ttlFrom(u.at, UTTERANCE_TTL_DAYS)),
     });
   }
   async listUtterances(id: HouseholdId, occurrenceId?: string) {
@@ -255,7 +286,7 @@ export class DynamoStore implements Store {
       T: 'event',
       ...e,
       detail: clip(e.detail),
-      ttl: ttlFrom(e.at, EVENT_TTL_DAYS),
+      ttl: ttlFor(e.householdId, ttlFrom(e.at, EVENT_TTL_DAYS)),
     });
   }
   async listEvents(id: HouseholdId, limit: number) {
@@ -274,7 +305,7 @@ export class DynamoStore implements Store {
           UpdateExpression: 'ADD #c :one SET #t = :t, #ttl = :ttl',
           ConditionExpression: 'attribute_not_exists(#c) OR #c < :cap',
           ExpressionAttributeNames: { '#c': 'count', '#t': 'T', '#ttl': 'ttl' },
-          ExpressionAttributeValues: { ':one': 1, ':cap': cap, ':t': 'cap', ':ttl': ttlFromDate(date, 3) },
+          ExpressionAttributeValues: { ':one': 1, ':cap': cap, ':t': 'cap', ':ttl': ttlFor(id, ttlFromDate(date, 3)) },
         }),
       );
       return true;
@@ -303,20 +334,20 @@ export class DynamoStore implements Store {
     }
   }
   async putLinkCode(codeHash: string, householdId: HouseholdId, expiresAt: string, role: LinkRole = 'person') {
-    await this.put({ ...keys.linkCode(codeHash), T: 'linkcode', householdId, role, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+    await this.put({ ...keys.linkCode(codeHash), T: 'linkcode', householdId, role, expiresAt, ttl: ttlFor(householdId, ttlFrom(expiresAt, 1)) });
   }
   async consumeLinkCode(codeHash: string, now: Date) {
     const item = await this.consume(keys.linkCode(codeHash), now);
     return item ? { householdId: item.householdId as HouseholdId, role: (item.role === 'family' ? 'family' : 'person') as LinkRole } : undefined;
   }
   async putAuthCode(codeHash: string, grant: OAuthGrant, expiresAt: string) {
-    await this.put({ ...keys.authCode(codeHash), T: 'authcode', grant, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+    await this.put({ ...keys.authCode(codeHash), T: 'authcode', grant, expiresAt, ttl: ttlFor(grant.householdId, ttlFrom(expiresAt, 1)) });
   }
   async consumeAuthCode(codeHash: string, now: Date) {
     return (await this.consume(keys.authCode(codeHash), now))?.grant as OAuthGrant | undefined;
   }
   async putRefreshToken(householdId: HouseholdId, tokenHash: string, grant: OAuthGrant, expiresAt: string) {
-    await this.put({ ...keys.refreshToken(householdId, tokenHash), T: 'refreshtoken', grant, expiresAt, ttl: ttlFrom(expiresAt, 1) });
+    await this.put({ ...keys.refreshToken(householdId, tokenHash), T: 'refreshtoken', grant, expiresAt, ttl: ttlFor(householdId, ttlFrom(expiresAt, 1)) });
   }
   async consumeRefreshToken(householdId: HouseholdId, tokenHash: string, now: Date) {
     return (await this.consume(keys.refreshToken(householdId, tokenHash), now))?.grant as OAuthGrant | undefined;
@@ -337,7 +368,7 @@ export class DynamoStore implements Store {
   // ---- Mail log (2-day TTL; no addresses) ----
 
   async appendMailLog(entry: MailLogEntry) {
-    await this.put({ PK: `H#${entry.householdId}`, SK: `MAIL#${entry.at}#${randomSuffix()}`, T: 'mail', ...entry, ttl: ttlFrom(entry.at, 2) });
+    await this.put({ PK: `H#${entry.householdId}`, SK: `MAIL#${entry.at}#${randomSuffix()}`, T: 'mail', ...entry, ttl: ttlFor(entry.householdId, ttlFrom(entry.at, 2)) });
   }
   async listMailLog(householdId: HouseholdId, limit: number) {
     const res = await this.doc.send(new QueryCommand({ TableName: this.table, ...this.prefix(householdId, 'MAIL#', false, limit) }));

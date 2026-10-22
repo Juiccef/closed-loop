@@ -1,7 +1,11 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 import {
   ConflictError,
   MemoryStore,
+  VISITOR_HOURS,
+  newVisitorHouseholdId,
   occurrenceId,
   type Household,
   type Occurrence,
@@ -140,6 +144,64 @@ for (const [name, make] of backends) {
       expect(await store.getHousehold(id)).toBeUndefined();
       expect(await store.listOccurrences(id, '2026-10-19')).toEqual([]);
       expect(await store.listHouseholdIds()).not.toContain(id);
+    });
+
+    it("keeps a visitor household's own clock, apart from the deployment-wide clock", async () => {
+      const store = make();
+      const id = newVisitorHouseholdId();
+      const other = uniq();
+      const deployment = await store.getClockOffsetSeconds();
+      await store.putHousehold({ ...household(id), clockOffsetSeconds: 3600, expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
+      await store.putHousehold(household(other));
+      expect(await store.getClockOffsetSeconds(id)).toBe(3600);
+      await store.setClockOffsetSeconds(7200, id);
+      expect(await store.getClockOffsetSeconds(id)).toBe(7200);
+      expect(await store.getClockOffsetSeconds()).toBe(deployment);
+      // Any other household follows the deployment-wide clock.
+      expect(await store.getClockOffsetSeconds(other)).toBe(deployment);
+      await store.deleteHousehold(id);
+      await store.deleteHousehold(other);
+    });
+
+    it('treats a visitor household past its expiry as gone', async () => {
+      const store = make();
+      const id = newVisitorHouseholdId();
+      await store.putHousehold({ ...household(id), expiresAt: new Date(Date.now() - 1000).toISOString() });
+      expect(await store.getHousehold(id)).toBeUndefined();
+      expect(await store.listHouseholdIds()).not.toContain(id);
+      await store.deleteHousehold(id);
+    });
+  });
+}
+
+if (process.env.DDB_TEST_TABLE) {
+  describe('store contract: dynamodb TTL for visitor households', { timeout: 30_000 }, () => {
+    it('puts a TTL on every item of a visitor household, and none on another household', async () => {
+      const table = process.env.DDB_TEST_TABLE!;
+      const store = new DynamoStore(table);
+      const raw = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+      const id = newVisitorHouseholdId();
+      const other = uniq();
+      const expiresAt = new Date(Date.now() + VISITOR_HOURS * 3_600_000).toISOString();
+      for (const h of [id, other]) {
+        await store.putHousehold({ ...household(h), ...(h === id ? { expiresAt, clockOffsetSeconds: 60 } : {}) });
+        await store.putLadder(h, { l1ContactIds: ['c1'], l2ContactIds: [], l2AfterMissedDays: 2, dailyAlertCap: 3, quietHours: null, planExpiryDays: 14 });
+        await store.createOccurrence(occurrence(h, '2026-10-19'));
+        await store.updateOccurrence({ ...occurrence(h, '2026-10-19'), state: 'PROMPTED', version: 2 }, 1);
+        await store.appendEvent({ householdId: h, at: '2026-10-19T12:00:00.000Z', type: 'prompted', detail: 'x' });
+        await store.tryConsumeAlert(h, '2026-10-19', 3);
+      }
+      const items = async (h: string) =>
+        (await raw.send(new QueryCommand({ TableName: table, KeyConditionExpression: 'PK = :pk', ExpressionAttributeValues: { ':pk': `H#${h}` } }))).Items ?? [];
+      const latest = Math.floor(Date.now() / 1000) + VISITOR_HOURS * 3600 + 5;
+      const visitorItems = await items(id);
+      expect(visitorItems.length).toBeGreaterThanOrEqual(5);
+      for (const item of visitorItems) expect(typeof item.ttl === 'number' && item.ttl <= latest, `${item.SK} ttl ${item.ttl}`).toBe(true);
+      expect(visitorItems.find((i) => i.SK === 'META')?.ttl).toBe(Math.floor(Date.parse(expiresAt) / 1000));
+      const otherItems = await items(other);
+      expect(otherItems.filter((i) => ['META', 'LADDER'].includes(String(i.SK)) || String(i.SK).startsWith('OCC#')).every((i) => i.ttl === undefined)).toBe(true);
+      await store.deleteHousehold(id);
+      await store.deleteHousehold(other);
     });
   });
 }

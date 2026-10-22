@@ -4,7 +4,9 @@
 import { timingSafeEqual } from 'node:crypto';
 import {
   CHECKIN_KINDS,
+  DEMO_TIMEZONE,
   LEDGER_WORDING,
+  VISITOR_HOURS,
   SCOPE_NOTICE,
   acknowledge,
   addDays,
@@ -15,9 +17,12 @@ import {
   LINK_CODE_MINUTES,
   generateLinkCode,
   hashSecret,
+  isVisitorHousehold,
   loadPlan,
   localDate,
   newOccurrence,
+  newVisitorHouseholdId,
+  realNow,
   zonedInstant,
   localDateTime,
   localTime,
@@ -30,6 +35,7 @@ import {
   type LadderConfig,
   type Store,
   type TickReport,
+  type VisitorSeed,
 } from '@closed-loop/core';
 
 export { ackUrlBuilder } from '@closed-loop/core';
@@ -39,10 +45,15 @@ export interface ApiConfig {
   /** Bearer token for the console and admin endpoints (demo protection, not user accounts). */
   adminToken: string;
   ackSecret: string;
-  /** Runs one tick immediately (used after advancing the simulated clock). `origin` is this deployment's base URL, for ack links. */
-  runTick: (origin: string) => Promise<TickReport>;
-  /** Re-creates the demo household. */
-  seed: () => Promise<void>;
+  /**
+   * Runs one tick immediately (used after advancing the simulated clock): every household, or only `householdIds`.
+   * `origin` is this deployment's base URL, for ack links.
+   */
+  runTick: (origin: string, householdIds?: string[]) => Promise<TickReport>;
+  /** Re-creates the shared demo household, or with `visitor`, creates a visitor's own copy of it. */
+  seed: (visitor?: VisitorSeed) => Promise<void>;
+  /** The MCP bearer token that acts for one visitor household (see visitorToken). */
+  householdToken?: (householdId: string) => string;
   /** Static files (console and simulator pages). */
   staticFile?: (path: string) => Promise<{ body: string; type: string } | undefined>;
   /** Public configuration the pages read at startup (no secrets). */
@@ -243,7 +254,6 @@ export function createApiHandler(cfg: ApiConfig) {
     const url = new URL(req.url);
     let token = url.searchParams.get('t') ?? '';
     if (req.method === 'POST') token = new URLSearchParams(await req.text()).get('t') ?? '';
-    const now = await clockNow(store);
     // Link expiry is a security property, so it uses real time, not the simulated clock.
     const payload = verifyAck(cfg.ackSecret, token, Math.floor(Date.now() / 1000));
     const page = (title: string, body: string) =>
@@ -284,7 +294,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         `<p>${what}</p><p>Status: <strong>${ledgerLine(occ)}</strong></p><form method="post" action="?"><input type="hidden" name="t" value="${safe}"><button type="submit">Yes, I've been in touch</button></form>`,
       );
     }
-    const r = await acknowledge(store, payload.householdId, payload.occurrenceId, payload.contactId, now);
+    const r = await acknowledge(store, payload.householdId, payload.occurrenceId, payload.contactId, await clockNow(store, payload.householdId));
     if (!r.ok) return page('Nothing to acknowledge', `<p>${what} is currently "${ledgerLine(occ)}", so there is nothing to acknowledge.</p>`);
     return page('Acknowledged', `<p>Thank you. ${what} is acknowledged. No further emails will be sent about it.</p>`);
   }
@@ -309,19 +319,24 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
       // ---- Admin (demo only) ----
       if (path === '/admin/clock') {
+        // ?household=<visitor household>: that household's own clock, and a tick of that household only.
+        // Otherwise the deployment-wide clock, which the shared 'demo' household (and every other) follows.
+        const requested = url.searchParams.get('household') ?? 'demo';
+        const own = isVisitorHousehold(requested) ? requested : undefined;
+        const h = await store.getHousehold(requested);
+        if (own && !h) throw new HttpError(404, 'Household not found.');
         if (req.method === 'POST') {
           const body = await readJson<{ advanceSeconds?: number; reset?: boolean }>(req);
-          if (body.reset) await resetClock(store);
-          else await advanceClock(store, int(body.advanceSeconds, 60, 7 * 86_400, 'advanceSeconds'));
-          const tick = await cfg.runTick(origin);
-          const now = await clockNow(store);
-          return json(200, { offsetSeconds: await store.getClockOffsetSeconds(), now: now.toISOString(), tick });
+          if (body.reset) await resetClock(store, own);
+          else await advanceClock(store, int(body.advanceSeconds, 60, 7 * 86_400, 'advanceSeconds'), own);
+          const tick = await cfg.runTick(origin, own ? [own] : (await store.listHouseholdIds()).filter((id) => !isVisitorHousehold(id)));
+          const now = await clockNow(store, own);
+          return json(200, { offsetSeconds: await store.getClockOffsetSeconds(own), now: now.toISOString(), tick });
         }
-        const now = await clockNow(store);
-        const h = await store.getHousehold(url.searchParams.get('household') ?? 'demo');
-        const tz = h?.timezone ?? 'America/New_York';
+        const now = await clockNow(store, own);
+        const tz = h?.timezone ?? DEMO_TIMEZONE;
         return json(200, {
-          offsetSeconds: await store.getClockOffsetSeconds(),
+          offsetSeconds: await store.getClockOffsetSeconds(own),
           now: now.toISOString(),
           localNow: localDateTime(now, tz),
           localDate: localDate(now, tz),
@@ -332,19 +347,29 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
       }
       if (path === '/admin/tick' && req.method === 'POST') return json(200, await cfg.runTick(origin));
       if (path === '/admin/demo-start' && req.method === 'POST') {
-        // Moves the simulated clock to 7:55 am tomorrow (household time) and re-creates the demo household.
-        const tz = (await store.getHousehold('demo'))?.timezone ?? 'America/New_York';
-        const target = zonedInstant(addDays(localDate(new Date(), tz), 1), '07:55', tz);
-        await store.setClockOffsetSeconds(Math.round((target.getTime() - Date.now()) / 1000));
-        await cfg.seed();
-        return json(200, { now: (await clockNow(store)).toISOString(), localNow: localDateTime(await clockNow(store), tz) });
+        // A fresh demo household for this visitor alone, on its own clock at 7:55 am tomorrow (household time).
+        // Nobody else's household or clock changes; the shared 'demo' household is untouched.
+        const body = await readJson<{ previous?: unknown }>(req);
+        const householdId = newVisitorHouseholdId();
+        const real = realNow();
+        const start = zonedInstant(addDays(localDate(new Date(real), DEMO_TIMEZONE), 1), '07:55', DEMO_TIMEZONE);
+        const expiresAt = new Date(real + VISITOR_HOURS * 3_600_000).toISOString();
+        await cfg.seed({ householdId, now: start, clockOffsetSeconds: Math.ceil((start.getTime() - real) / 1000), expiresAt }); // never a moment before 7:55
+        // The visitor's previous demo day can no longer be reached from their page: delete it now, not at expiry.
+        if (typeof body.previous === 'string' && isVisitorHousehold(body.previous)) await store.deleteHousehold(body.previous);
+        const now = await clockNow(store, householdId);
+        return json(200, { householdId, mcpToken: cfg.householdToken?.(householdId), expiresAt, now: now.toISOString(), localNow: localDateTime(now, DEMO_TIMEZONE) });
       }
       if (path === '/admin/seed' && req.method === 'POST') {
         await cfg.seed();
         return json(200, { ok: true });
       }
       if (path === '/admin/emails') return json(200, await store.listMailLog(url.searchParams.get('household') ?? 'demo', 10));
-      if (path === '/admin/demo-config') return json(200, cfg.demoConfig(origin));
+      if (path === '/admin/demo-config') {
+        const requested = url.searchParams.get('household') ?? '';
+        if (!isVisitorHousehold(requested) || !cfg.householdToken) return json(200, cfg.demoConfig(origin));
+        return json(200, { ...cfg.demoConfig(origin), householdId: requested, mcpToken: cfg.householdToken(requested) });
+      }
 
       // ---- Console API ----
       const m = path.match(/^\/api\/households\/([a-z0-9_-]{1,32})(\/.*)?$/);
@@ -362,7 +387,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
             const existing = (await store.listCheckins(id)).find((c) => c.id === chkId);
             const def = parseCheckin(await readJson(req), chkId, existing);
             await store.putCheckin(id, def);
-            const now = await clockNow(store);
+            const now = await clockNow(store, id);
             await store.appendEvent({ householdId: id, at: now.toISOString(), type: existing ? 'checkin_updated' : 'checkin_defined', detail: `Check-in "${def.label}" ${existing ? 'updated' : 'added'}.` });
             return json(200, def);
           }
@@ -393,13 +418,13 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
           if (!h) throw new HttpError(404, 'Household not found.');
           const ladder = parseLadder(await readJson(req), h.contacts);
           await store.putLadder(id, ladder);
-          const now = await clockNow(store);
+          const now = await clockNow(store, id);
           await store.appendEvent({ householdId: id, at: now.toISOString(), type: 'ladder_updated', detail: 'Who gets emailed, and when, was updated.' });
           return json(200, ladder);
         }
         if (rest === '/consent' && req.method === 'POST') {
           const body = await readJson<{ recipientName?: string; recordedBy?: string }>(req);
-          const now = await clockNow(store);
+          const now = await clockNow(store, id);
           const ladder = await store.getLadder(id);
           const consent = {
             id: `consent-${now.getTime()}`,
@@ -416,7 +441,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         if (rest === '/consent/revoke' && req.method === 'POST') {
           const [latest] = await store.listConsents(id);
           if (!latest) throw new HttpError(404, 'No consent on record.');
-          const now = await clockNow(store);
+          const now = await clockNow(store, id);
           await store.putConsent(id, { ...latest, revokedAt: now.toISOString() });
           await store.appendEvent({ householdId: id, at: now.toISOString(), type: 'consent_revoked', detail: 'Consent revoked. Check-ins and emails stopped immediately.' });
           return json(200, { ok: true });
@@ -425,13 +450,13 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         if (ack && req.method === 'POST') {
           const occId = decodeURIComponent(ack[1]!);
           const body = await readJson<{ contactId?: string }>(req);
-          const r = await acknowledge(store, id, occId, String(body.contactId ?? 'console'), await clockNow(store));
+          const r = await acknowledge(store, id, occId, String(body.contactId ?? 'console'), await clockNow(store, id));
           if (!r.ok) throw new HttpError(409, 'Nothing to acknowledge for this check-in.');
           return json(200, r);
         }
         if (rest === '/pause' && req.method === 'POST') {
           const body = await readJson<{ hours?: number }>(req);
-          const now = await clockNow(store);
+          const now = await clockNow(store, id);
           const hours = int(body.hours ?? 24, 1, 168, 'hours');
           await store.updateHousehold(id, { pausedUntil: new Date(now.getTime() + hours * 3_600_000).toISOString(), pausedAt: now.toISOString(), pausedBy: 'caregiver' });
           await store.appendEvent({ householdId: id, at: now.toISOString(), type: 'paused', detail: `Paused from the console for ${hours} hours.` });
@@ -439,11 +464,11 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         }
         if (rest === '/resume' && req.method === 'POST') {
           const h = await store.getHousehold(id);
-          if (h?.pausedBy === 'person' && h.pausedUntil && new Date(h.pausedUntil) > (await clockNow(store))) {
+          if (h?.pausedBy === 'person' && h.pausedUntil && new Date(h.pausedUntil) > (await clockNow(store, id))) {
             throw new HttpError(409, `${h.recipientName} paused check-ins themselves; the pause ends on its own.`);
           }
           await store.updateHousehold(id, { pausedUntil: undefined, pausedAt: undefined, pausedBy: undefined });
-          await store.appendEvent({ householdId: id, at: (await clockNow(store)).toISOString(), type: 'resumed', detail: 'Check-ins resumed from the console.' });
+          await store.appendEvent({ householdId: id, at: (await clockNow(store, id)).toISOString(), type: 'resumed', detail: 'Check-ins resumed from the console.' });
           return json(200, { ok: true });
         }
         if (rest === '/link-code' && req.method === 'POST') {
@@ -462,7 +487,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         }
         if (rest === '/links' && req.method === 'DELETE') {
           const removed = await store.deleteRefreshTokens(id);
-          await store.appendEvent({ householdId: id, at: (await clockNow(store)).toISOString(), type: 'account_unlinked', detail: `Unlinked ${removed} voice assistant sign-in${removed === 1 ? '' : 's'}. Access ends within an hour.` });
+          await store.appendEvent({ householdId: id, at: (await clockNow(store, id)).toISOString(), type: 'account_unlinked', detail: `Unlinked ${removed} voice assistant sign-in${removed === 1 ? '' : 's'}. Access ends within an hour.` });
           return json(200, { removed });
         }
         if (rest === '/data' && req.method === 'DELETE') {

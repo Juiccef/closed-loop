@@ -36,9 +36,11 @@ Then open:
 
 - **Simulator:** http://localhost:5173/simulator/ (access code `local-dev`, filled in automatically locally)
 - **Caregiver console:** http://localhost:5173/console/
-- **MCP endpoint:** http://localhost:5173/mcp with header `Authorization: Bearer local-dev-mcp`
+- **MCP endpoint:** http://localhost:5173/mcp with header `Authorization: Bearer local-dev-mcp` (acts for the shared `demo` household)
 
 Local run mode uses an in-memory store, the same simulated clock, the rule-based planner, and a fake email sender that writes each email as an HTML file to `./out/emails/`.
+
+**Every visitor gets a demo household of their own.** Opening the simulator or console creates a copy of Margaret's household (`demo-<random>`) with its own simulated clock, ledger, and email panel, so two people using the hosted demo at once never affect each other. The pages keep its id for the browser tab and pass it along in links; the simulator's MCP calls use a bearer token that acts for that household only. Each copy is deleted 24 hours after it starts (DynamoDB TTL), and **Start a fresh demo day** replaces it. The shared `demo` household, the static token, and the deployment-wide clock still work for MCP Inspector and scripts.
 
 ### A two-minute walkthrough
 
@@ -165,9 +167,9 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 109 tests: state machine, ladder, safety eval, stores, MCP protocol, OAuth, planner, classifier
+npm test            # 121 tests: state machine, ladder, safety eval, stores, MCP protocol, OAuth, planner, classifier, per-visitor isolation
 npm run typecheck
-npm run e2e         # replays the demo against a running deployment and checks the ledger
+npm run e2e         # replays the demo against a running deployment, checks the ledger, and checks two visitors stay isolated
 ```
 
 Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB table as well.

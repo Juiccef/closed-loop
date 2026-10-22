@@ -1,10 +1,21 @@
 import { addMinutes, localDate, zonedInstant } from './clock';
-import type { CheckinDefinition, Household, LadderConfig } from './model';
+import type { CheckinDefinition, Household, HouseholdId, LadderConfig } from './model';
 import type { Store } from './store';
 
 export const DEMO_HOUSEHOLD_ID = 'demo';
+export const DEMO_TIMEZONE = 'America/New_York';
 
-export interface SeedOptions {
+/** What makes a per-visitor copy of the demo household (see visitor.ts). */
+export interface VisitorSeed {
+  householdId: HouseholdId;
+  /** The visitor's simulated time at the start; `clockOffsetSeconds` is that minus real time. */
+  now: Date;
+  clockOffsetSeconds: number;
+  /** Real time. */
+  expiresAt: string;
+}
+
+export interface SeedOptions extends Partial<Omit<VisitorSeed, 'now'>> {
   now: Date;
   /** Daughter, first contact (L1). In the SES sandbox this must be a verified address. */
   l1Email: string;
@@ -56,14 +67,18 @@ export function demoCheckins(createdAt: string): CheckinDefinition[] {
   ];
 }
 
-/** Creates (or resets) the demo household: plan, ladder, and Dana's consent record for Margaret. */
+/**
+ * Creates (or resets) the demo household: plan, ladder, and Dana's consent record for Margaret.
+ * The shared 'demo' household by default; with `householdId`, a visitor's own copy on its own clock.
+ */
 export async function seedDemoHousehold(store: Store, opts: SeedOptions): Promise<void> {
-  await store.deleteHousehold(DEMO_HOUSEHOLD_ID);
-  const timezone = opts.timezone ?? 'America/New_York';
+  const id = opts.householdId ?? DEMO_HOUSEHOLD_ID;
+  await store.deleteHousehold(id);
+  const timezone = opts.timezone ?? DEMO_TIMEZONE;
   // Created at local midnight so all of today's windows count, whatever time the demo starts.
   const createdAt = zonedInstant(localDate(opts.now, timezone), '00:00', timezone).toISOString();
   const household: Household = {
-    id: DEMO_HOUSEHOLD_ID,
+    id,
     recipientName: 'Margaret',
     timezone,
     contacts: [
@@ -72,6 +87,8 @@ export async function seedDemoHousehold(store: Store, opts: SeedOptions): Promis
     ],
     createdAt,
     demoMode: opts.demoMode ?? true,
+    ...(opts.clockOffsetSeconds !== undefined ? { clockOffsetSeconds: opts.clockOffsetSeconds } : {}),
+    ...(opts.expiresAt ? { expiresAt: opts.expiresAt } : {}),
   };
   const ladder: LadderConfig = {
     l1ContactIds: ['dana'],
@@ -82,9 +99,9 @@ export async function seedDemoHousehold(store: Store, opts: SeedOptions): Promis
     planExpiryDays: 14,
   };
   await store.putHousehold(household);
-  await store.putLadder(DEMO_HOUSEHOLD_ID, ladder);
-  for (const def of demoCheckins(createdAt)) await store.putCheckin(DEMO_HOUSEHOLD_ID, def);
-  await store.putConsent(DEMO_HOUSEHOLD_ID, {
+  await store.putLadder(id, ladder);
+  for (const def of demoCheckins(createdAt)) await store.putCheckin(id, def);
+  await store.putConsent(id, {
     id: 'consent-1',
     recipientName: 'Margaret',
     recordedBy: 'Dana (daughter)',
@@ -92,7 +109,7 @@ export async function seedDemoHousehold(store: Store, opts: SeedOptions): Promis
     planExpiresAt: addMinutes(opts.now, ladder.planExpiryDays * 24 * 60).toISOString(),
   });
   await store.appendEvent({
-    householdId: DEMO_HOUSEHOLD_ID,
+    householdId: id,
     at: createdAt,
     type: 'consent_recorded',
     detail: "Dana recorded Margaret's consent to daily check-ins for 14 days.",

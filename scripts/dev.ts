@@ -2,7 +2,7 @@
 // the same simulated clock, and the rule-based planner. One port serves MCP, the console, and the simulator.
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { MemoryStore, ackUrlBuilder, now, runTick, seedDemoHousehold } from '@closed-loop/core';
+import { MemoryStore, ackUrlBuilder, now, runTick, seedDemoHousehold, verifyVisitorToken, visitorToken, type VisitorSeed } from '@closed-loop/core';
 import { createWebHandler, staticPathToFile } from '@closed-loop/api';
 import { createOAuth, serveWebHandler } from '@closed-loop/mcp-server';
 import { FileMailer, RecordingMailer } from '@closed-loop/tick';
@@ -17,11 +17,11 @@ const APPS = join(import.meta.dirname, '..', 'apps');
 
 const store = new MemoryStore();
 const mailer = new RecordingMailer(new FileMailer(join(process.cwd(), 'out', 'emails')));
-const seed = async () => {
-  mailer.sent.length = 0; // a fresh demo day starts with an empty email panel
-  await seedDemoHousehold(store, { now: await now(store), l1Email: 'dana@example.com', l2Email: 'sam@example.com', demoMode: true });
+const seed = async (visitor?: VisitorSeed) => {
+  if (!visitor) mailer.sent.length = 0; // re-seeding the shared demo household starts with an empty email list
+  await seedDemoHousehold(store, { now: visitor?.now ?? (await now(store)), l1Email: 'dana@example.com', l2Email: 'sam@example.com', demoMode: true, ...visitor });
 };
-const tick = (origin: string) => runTick(store, { mailer, ackUrl: ackUrlBuilder(origin, ACK_SECRET) });
+const tick = (origin: string, householdIds?: string[]) => runTick(store, { mailer, ackUrl: ackUrlBuilder(origin, ACK_SECRET) }, householdIds);
 
 await seed();
 
@@ -44,13 +44,22 @@ const oauth = createOAuth(
 
 const handler = createWebHandler(
   store,
-  { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [ORIGIN], allowSameOrigin: true, resourceUrl: `${ORIGIN}/mcp`, includeWwwAuthenticate: false, oauth },
+  {
+    bearerTokens: { [MCP_TOKEN]: 'demo' },
+    householdBearer: (bearer) => verifyVisitorToken(MCP_TOKEN, bearer),
+    allowedOrigins: [ORIGIN],
+    allowSameOrigin: true,
+    resourceUrl: `${ORIGIN}/mcp`,
+    includeWwwAuthenticate: false,
+    oauth,
+  },
   {
     store,
     adminToken: ADMIN_TOKEN,
     ackSecret: ACK_SECRET,
     runTick: tick,
     seed,
+    householdToken: (householdId) => visitorToken(MCP_TOKEN, householdId),
     recentEmails: () => mailer.sent,
     planner: async (body) => rulesPlanner(body),
     publicConfig: () => ({ mode: 'local', householdId: 'demo', localAccessCode: ADMIN_TOKEN }),

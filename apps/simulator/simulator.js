@@ -2,11 +2,13 @@
 // Streamable HTTP. A planner (Bedrock, or rules) stands in for Alexa+'s LLM and picks the tool call.
 
 import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph, onHouseholdReplaced, startDemoDay, visitorHousehold } from '/shared/app.js';
+import { createTour } from '/simulator/tour.js';
 
 // `household` is this visitor's own demo household (see visitorHousehold in /shared/app.js).
 // pending: a set_my_checkin preview waiting for the person's answer (one turn only).
 // mine: the person's own check-ins as MCP last returned them (undefined until looked up).
-const state = { queue: [], current: null, recent: null, household: null, mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana', pending: null, mine: undefined };
+// pinned: the guided tour scrolled the conversation to a line; new cards do not scroll past it.
+const state = { queue: [], current: null, recent: null, household: null, mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana', pending: null, mine: undefined, pinned: false };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -15,6 +17,7 @@ $('#voice-notice').textContent = VOICE_TURNS_NOTICE;
 // ---- Captions ----
 
 function caption(who, text, extra = '') {
+  state.pinned = false;
   const li = document.createElement('li');
   const label = who === 'assistant' ? 'Assistant (simulated)' : who === 'person' ? state.personName : who === 'family' ? `${state.familyName} (family, own assistant)` : 'Simulation';
   li.className = `cap ${who === 'family' ? 'person family' : who}`;
@@ -116,7 +119,7 @@ function mountCard(toolName, args, result) {
       traffic({ kind: 'app', tag: 'MCP App', title: `${uri} ← tool-result`, meta: 'sandboxed iframe', line: 'ui/initialize → initialized → tool-input → tool-result', body: { uri, tool: toolName, delivered: result } });
     } else if (m.method === 'ui/notifications/size-changed') {
       frame.style.height = `${Math.min(320, Math.max(60, m.params?.height ?? 120))}px`;
-      if (!wrap.closest('li')?.nextElementSibling) $('#captions').scrollTop = $('#captions').scrollHeight; // keep the newest card in view
+      if (!state.pinned && !wrap.closest('li')?.nextElementSibling) $('#captions').scrollTop = $('#captions').scrollHeight; // keep the newest card in view
     } else if (m.id != null && m.method) {
       post({ jsonrpc: '2.0', id: m.id, error: { code: -32601, message: 'Method not supported by this host' } });
     }
@@ -354,6 +357,16 @@ async function moveClock(body, label) {
   }
 }
 
+/** Moves this household's clock forward to hh:mm today (household time), with the same tick as the buttons. */
+async function clockTo(hour, minute, label) {
+  const c = await api(`/admin/clock?household=${state.household}`);
+  const [h, m] = c.localNow.slice(11, 16).split(':').map(Number);
+  const now = new Date(c.now);
+  const seconds = Math.ceil((hour * 60 + minute - (h * 60 + m)) * 60 - now.getUTCSeconds() - now.getUTCMilliseconds() / 1000);
+  if (seconds < 60) throw new Error(`The simulated clock is already past ${label}. Start a fresh demo day first.`);
+  await moveClock({ advanceSeconds: seconds }, `to ${label}`);
+}
+
 // ---- Loops and mail (polling) ----
 
 async function refresh() {
@@ -582,24 +595,91 @@ $('#say-form').addEventListener(
 $$('.chip').forEach((b) => b.addEventListener('click', guard(() => personSays(b.dataset.say))));
 $$('[data-adv]').forEach((b) => b.addEventListener('click', guard(() => moveClock({ advanceSeconds: Number(b.dataset.adv) }, b.textContent.trim()))));
 $('[data-reset]').addEventListener('click', guard(() => moveClock({ reset: true }, 'reset')));
-$('#demo-start').addEventListener(
-  'click',
-  guard(async () => {
-    const r = await startDemoDay();
-    traffic({ kind: 'tick', tag: 'demo', title: 'fresh demo day', meta: r.localNow, body: { ...r, mcpToken: r.mcpToken && `${r.mcpToken.slice(0, 12)}…` } });
-    state.household = r.householdId;
-    useDemoToken(r.mcpToken ?? (await api(`/admin/demo-config?household=${state.household}`)).mcpToken);
-    state.queue = [];
-    state.current = null;
-    state.pending = null;
-    state.mine = undefined;
-    state.loops.clear();
-    goneShown = false;
-    $('#captions').innerHTML = '';
-    caption('system', 'New demo day, in a household of your own. The plan, consent, and ledger start fresh; nobody else’s demo changed.');
-    await Promise.all([loadClock(), refresh()]);
-  }),
-);
+async function freshDemoDay(note = 'New demo day, in a household of your own. The plan, consent, and ledger start fresh; nobody else’s demo changed.') {
+  const r = await startDemoDay();
+  traffic({ kind: 'tick', tag: 'demo', title: 'fresh demo day', meta: r.localNow, body: { ...r, mcpToken: r.mcpToken && `${r.mcpToken.slice(0, 12)}…` } });
+  state.household = r.householdId;
+  useDemoToken(r.mcpToken ?? (await api(`/admin/demo-config?household=${state.household}`)).mcpToken);
+  state.queue = [];
+  state.current = null;
+  state.recent = null;
+  state.pending = null;
+  state.mine = undefined;
+  state.loops.clear();
+  goneShown = false;
+  $('#captions').innerHTML = '';
+  caption('system', note);
+  await Promise.all([loadClock(), refresh()]);
+}
+$('#demo-start').addEventListener('click', guard(() => freshDemoDay()));
+
+// ---- Guided tour (/simulator/?tour=good-night) ----
+
+let tourHousehold = null;
+/**
+ * A fresh demo day for the tour, with the family's daily check-ins switched off (console API, this household only),
+ * so the one loop in play is the check-in Margaret sets up, and the daily email limit is left for it.
+ */
+async function tourDay() {
+  await freshDemoDay('Guided tour: a fresh demo day, in a household of your own.');
+  tourHousehold = state.household;
+  const view = await api(`/api/households/${state.household}`);
+  const family = view.checkins.filter((c) => c.active && c.author !== 'person');
+  const t0 = performance.now();
+  await Promise.all(family.map((c) => api(`/api/households/${state.household}/checkins/${c.id}`, { method: 'PUT', body: { ...c, active: false } })));
+  traffic({
+    kind: 'app',
+    tag: 'console API',
+    title: `PUT /api/households/${state.household}/checkins/{${family.map((c) => c.id).join(',')}}`,
+    meta: `HTTP 200 · ${Math.round(performance.now() - t0)} ms`,
+    line: `${state.familyName}’s daily check-ins switched off for this tour (this household only)`,
+    body: family.map((c) => ({ id: c.id, label: c.label, active: false })),
+  });
+  caption('system', `For this tour, ${state.familyName}’s ${family.length} daily check-ins are switched off here, so the only loop is the one ${state.personName} sets up.`);
+  await refresh();
+}
+
+/** Waits for read-aloud to finish (when on), then `ms` more, so each line can be read before the next. */
+async function settle(ms) {
+  for (let i = 0; i < 150 && state.speak && 'speechSynthesis' in window && speechSynthesis.speaking; i++) await new Promise((r) => setTimeout(r, 100));
+  await new Promise((r) => setTimeout(r, ms));
+}
+
+/** Scrolls the conversation so the last thing someone said is at the top, with the reply and its card below it. */
+function pinLastLine() {
+  const box = $('#captions');
+  const li = $$('.cap.person', box).pop();
+  if (!li) return;
+  state.pinned = true;
+  box.scrollTop += li.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+}
+
+function useSpeaker(who) {
+  const input = $(`input[name=speaker][value=${who}]`);
+  if (!input.checked) input.checked = true;
+  setSpeaker(who);
+}
+
+const tour = createTour({
+  ready: () => connected,
+  person: (text) => personSays(text),
+  family: (text) => familyAsks(text),
+  speaker: async (who) => useSpeaker(who),
+  clockTo,
+  freshDay: tourDay,
+  settle,
+  pinLastLine,
+  ended: () => {
+    useSpeaker('person');
+    if (state.household === tourHousehold) caption('system', `Tour ended. ${state.familyName}’s daily check-ins stay off in this household; start a fresh demo day to bring them back.`);
+  },
+  onError: (err) => {
+    console.error(err);
+    traffic({ kind: 'error', tag: 'error', title: err.message || String(err), body: { error: String(err) } });
+    orb('idle', 'Something went wrong; see the traffic pane');
+  },
+});
+
 function setSpeaker(who) {
   state.speaker = who;
   const family = who === 'family';
@@ -637,4 +717,5 @@ if (Recognition) {
   });
 }
 
-guard(main)();
+const connected = guard(main)();
+connected.then(() => tour.wanted() && tour.open());

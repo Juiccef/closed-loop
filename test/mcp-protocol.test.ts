@@ -136,6 +136,47 @@ describe('MCP protocol (in-process, real backend)', () => {
     expect(due._meta.ui).toEqual({ resourceUri: 'ui://closed-loop/checkin-card', invoking: 'Checking today\u2019s check-ins', invoked: 'Check-ins ready' });
   });
 
+  it('every tool answers with structuredContent, the same words as text, and _meta.ui', async () => {
+    const { call } = await setup();
+    setLocal('2026-10-19 08:00');
+    const due = await call('get_due_checkins');
+    const occurrenceId = due.structuredContent.checkins[0].occurrenceId;
+    const results = {
+      get_due_checkins: due,
+      defer_checkin: await call('defer_checkin', { occurrenceId, until: 'in_1_hour' }),
+      record_response: await call('record_response', { occurrenceId, response: 'done', utterance: 'Yes, done.' }),
+      get_my_status: await call('get_my_status'),
+      get_family_summary: await call('get_family_summary'),
+      pause_checkins: await call('pause_checkins', { scope: 'today' }),
+    };
+    for (const [name, r] of Object.entries(results)) {
+      expect(r.isError, name).toBeFalsy();
+      expect(r.content, name).toEqual([{ type: 'text', text: r.structuredContent.say }]);
+      expect(r._meta.ui.resourceUri, name).toBe('ui://closed-loop/checkin-card');
+    }
+  });
+
+  it('tool annotations: only the two read-only tools say so, and no tool reaches outside the server', async () => {
+    const { rpc } = await setup();
+    const tools: Array<{ name: string; annotations: { readOnlyHint: boolean; openWorldHint: boolean } }> = (await rpc('tools/list')).body.result.tools;
+    expect(tools).toHaveLength(6);
+    for (const t of tools) expect(t.annotations.openWorldHint, t.name).toBe(false);
+    expect(tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name)).toEqual(['get_my_status', 'get_family_summary']);
+  });
+
+  it('GET /mcp is 405 (no SSE stream); a POST with no Accept header still gets a JSON answer', async () => {
+    const { handle } = await setup();
+    const get = await handle(new Request('http://localhost/mcp', { method: 'GET', headers: { authorization: `Bearer ${TOKEN}`, accept: 'text/event-stream' } }));
+    expect(get.status).toBe(405);
+    const init = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'no-accept', version: '1' } } };
+    const res = await handle(
+      new Request('http://localhost/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(init) }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect((await res.json()).result.protocolVersion).toBe('2025-03-26');
+  });
+
   it('unknown occurrence is a tool error (isError), not a protocol error', async () => {
     const { call } = await setup();
     setLocal('2026-10-19 08:00');

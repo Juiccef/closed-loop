@@ -99,7 +99,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "openWorldHint": false,
       "readOnlyHint": false,
     },
-    "description": "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. Read back the returned "say" text; if a calmingLine is returned, say it and do not ask further questions. When the person says the phrase of a check-in they set up themselves (for example "good night"), call this with that check-in's occurrenceId from get_my_status, response done, and their words.",
+    "description": "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. Read back the returned "say" text exactly; if a calmingLine is returned, do not ask further questions. When the person says the phrase of a check-in they set up themselves (for example "good night"), call this with that check-in's occurrenceId from get_my_status, response done, and their words. If the person sounds upset or asks for help and no check-in is in progress, call this without an occurrenceId, with response needs_help and their words: the family is still told.",
     "execution": {
       "taskSupport": "forbidden",
     },
@@ -107,7 +107,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "occurrenceId": {
-          "description": "The occurrenceId returned by get_due_checkins.",
+          "description": "The check-in being answered. Omit only for needs_help with no check-in in progress.",
           "maxLength": 80,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9#:_-]+$",
@@ -131,7 +131,6 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
         },
       },
       "required": [
-        "occurrenceId",
         "response",
       ],
       "type": "object",

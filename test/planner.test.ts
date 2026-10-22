@@ -1,11 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { CRISIS_REPLY, SELF_HARM_REPLY, setRealTimeSource } from '../packages/core/src';
+import { describe, expect, it } from 'vitest';
+import { CRISIS_REPLY } from '../packages/core/src';
 import { parseOwnCheckin, rulesPlanner } from '../packages/api/src/planner';
 import { bedrockOrRulesPlanner } from '../packages/api/src/planner-bedrock';
-import { createApiHandler } from '../packages/api/src/router';
-import { demo } from './helpers';
 
-afterEach(() => setRealTimeSource(() => Date.now()));
+/** With no check-in in progress, words that need a person still go to the server, which records them and tells the family. */
+const withoutCheckin = (utterance: string) => ({ name: 'record_response', arguments: { response: 'needs_help', utterance } });
 
 const current = { occurrenceId: 'OCC#2026-10-19#morning#0', label: 'your morning routine', prompt: 'Have you done it?' };
 
@@ -21,9 +20,10 @@ describe('planner: safety runs first', () => {
     expect(p.toolCall?.arguments.response).toBe('needs_help');
   });
 
-  it('emergency words with no check-in at all get the fixed 911 line', () => {
-    expect(rulesPlanner({ userText: 'My chest hurts', current: null }).reply).toBe(CRISIS_REPLY);
-    expect(rulesPlanner({ userText: "I don't want to live anymore" }).reply).toBe(SELF_HARM_REPLY);
+  it('emergency, help, and distress words with no check-in at all still go to record_response (no occurrenceId): the server answers and tells the family', () => {
+    for (const userText of ['My chest hurts', "I don't want to live anymore", 'Help!', "I'm scared. Where is everyone?"]) {
+      expect(rulesPlanner({ userText, current: null }).toolCall, userText).toEqual(withoutCheckin(userText));
+    }
   });
 
   it('the Bedrock path applies the same rule before calling any model', async () => {
@@ -32,35 +32,11 @@ describe('planner: safety runs first', () => {
     try {
       const p = await bedrockOrRulesPlanner({ userText: 'help me, I fell', current: null, tools: [{ name: 'record_response' }] });
       expect(p.planner).toBe('rules');
-      expect(p.reply).toBe(CRISIS_REPLY);
+      expect(p.toolCall).toEqual(withoutCheckin('help me, I fell'));
     } finally {
       if (before === undefined) delete process.env.BEDROCK_MODEL_ID;
       else process.env.BEDROCK_MODEL_ID = before;
     }
-  });
-
-  it("distress with no check-in to record it against gets the family's own calming line from the server, not a menu", async () => {
-    const d = await demo();
-    const handle = createApiHandler({
-      store: d.store,
-      adminToken: 'admin',
-      ackSecret: 'test-secret',
-      runTick: async () => d.tick(),
-      seed: async () => {},
-      publicConfig: () => ({}),
-      demoConfig: () => ({}),
-      planner: async (body) => rulesPlanner(body),
-    });
-    const plan = async (userText: string) =>
-      (await (await handle(new Request('http://localhost/planner', { method: 'POST', headers: { authorization: 'Bearer admin' }, body: JSON.stringify({ userText, current: null }) }))).json()) as {
-        toolCall: unknown;
-        reply: string;
-      };
-    const calm = "You're safe at home, Margaret. Dana will give you a call this evening.";
-    expect(await plan("I'm scared. Where is everyone?")).toMatchObject({ toolCall: null, reply: calm });
-    expect(await plan('Help!')).toMatchObject({ toolCall: null, reply: `${calm} ${CRISIS_REPLY}` });
-    expect(await plan("I fell and I can't get up")).toMatchObject({ toolCall: null, reply: CRISIS_REPLY });
-    expect((await plan('Help me with the crossword')).reply).not.toContain('911');
   });
 
   it('ordinary replies are unchanged', () => {
@@ -137,7 +113,9 @@ describe('planner: check-ins the person sets up by voice', () => {
   });
 
   it('a crisis said while setting one up, or while answering the preview, gets the 911 line first', () => {
-    expect(rulesPlanner({ userText: "If I haven't said good night by ten, tell Dana. I fell and I can't get up." }).reply).toBe(CRISIS_REPLY);
-    expect(rulesPlanner({ userText: "Yes. I don't want to live anymore.", pending: { confirmToken: 'a.b' } }).reply).toBe(SELF_HARM_REPLY);
+    const fell = "If I haven't said good night by ten, tell Dana. I fell and I can't get up.";
+    expect(rulesPlanner({ userText: fell }).toolCall).toEqual(withoutCheckin(fell));
+    const notLive = "Yes. I don't want to live anymore.";
+    expect(rulesPlanner({ userText: notLive, pending: { confirmToken: 'a.b' } }).toolCall).toEqual(withoutCheckin(notLive));
   });
 });

@@ -15,8 +15,6 @@ export interface PlannerRequest {
   tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
   /** Who is talking: the person (default), or a family member asking from their own assistant. */
   speaker?: 'person' | 'family';
-  /** The family's calming line, added by the server: said for distress when there is no check-in to record it against. */
-  calmingLine?: string | null;
   /** A set_my_checkin preview waiting for the person's answer. */
   pending?: { confirmToken: string } | null;
   /** The person's own check-ins as the last get_my_status (or set_my_checkin) returned them; absent when not known yet. */
@@ -186,8 +184,8 @@ export function classifyReply(text: string): CheckinResponse {
 /**
  * Safety first, before any rules or model: emergency or distress wording always reaches the server's safety
  * layer (which answers with the 911 line or the family's calming words and queues the family note), even when
- * no check-in is being asked. With no check-in at all, the fixed emergency line is returned directly, and distress
- * gets the family's calming line (`calmingLine`, which the server adds to the request).
+ * no check-in is being asked. With no check-in at all, record_response goes without an occurrenceId, so the server still
+ * records it and the family is told.
  */
 export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
   const raw = String(req.userText ?? '').slice(0, 200);
@@ -201,14 +199,17 @@ export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
       rationale: `${s.branch} wording: safety rule runs before any model`,
     };
   }
-  if (s.branch === 'crisis') {
-    return { planner: 'rules', toolCall: null, reply: s.selfHarm ? SELF_HARM_REPLY : CRISIS_REPLY, rationale: 'emergency wording with no check-in: fixed reply' };
+  // A family member's own words are never recorded for the person: emergency or "help" wording gets the fixed line.
+  if (req.speaker === 'family') {
+    if (s.branch === 'crisis') return { planner: 'rules', toolCall: null, reply: s.selfHarm ? SELF_HARM_REPLY : CRISIS_REPLY, rationale: 'emergency wording from family: fixed reply' };
+    return s.helpRequest ? { planner: 'rules', toolCall: null, reply: CRISIS_REPLY, rationale: 'a call for help from family: fixed reply' } : null;
   }
-  // Distress, or a bare "help", with nothing to record it against: the family's calming line (plus the 911 line for "help").
-  // A family member's own words never get the person's calming line.
-  if (req.speaker === 'family') return s.helpRequest ? { planner: 'rules', toolCall: null, reply: CRISIS_REPLY, rationale: 'a call for help from family: fixed reply' } : null;
-  const calm = req.calmingLine || "It's all right. I'm here.";
-  return { planner: 'rules', toolCall: null, reply: s.helpRequest ? `${calm} ${CRISIS_REPLY}` : calm, rationale: 'distress wording with no check-in: the family’s calming line' };
+  // No check-in in progress: the server still records it (on today's check-in, or a record of its own) and tells the family.
+  return {
+    planner: 'rules',
+    toolCall: { name: 'record_response', arguments: { response: 'needs_help', utterance: raw } },
+    rationale: `${s.branch} wording with no check-in: the server records it and tells the family`,
+  };
 }
 
 /** A family member asks from their own assistant: they can hear what was recorded, never answer for the person. */

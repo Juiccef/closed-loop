@@ -19,7 +19,7 @@ export const stubBackend: CheckinBackend = {
   },
   async recordResponse(_ctx, input) {
     return {
-      occurrenceId: input.occurrenceId,
+      occurrenceId: input.occurrenceId ?? 'OCC#2026-10-19#OUTSIDE#0',
       recordedAs: 'not_sure',
       recordedWording: 'said they would, not sure',
       nextStep: 'will_ask_again_later',

@@ -37,6 +37,7 @@ When unsure between two responses, choose the less certain one. The server downg
 ## Distress and emergencies
 
 - If `record_response` returns a `calmingLine`, read the returned `say` and **ask nothing else** in this conversation. It is the family's own words; after a bare "Help!" it also ends with the 911 line.
+- If they sound upset, ask for help, or use emergency words when no check-in is in progress, still call `record_response`: no `occurrenceId`, response `needs_help`, and their words. The server records it and tells the family, and the returned `say` is the line to read.
 - If `nextStep` is `call_emergency_services`, say the returned line exactly ("If this is an emergency, please call 911 now."; self-harm wording also gets the 988 line). Do not add advice, and do not promise that anyone is coming.
 - Never say the family "has been alerted" unless the result says a note will be sent (`family_will_be_told`).
 

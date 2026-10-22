@@ -37,6 +37,7 @@ A plain "no" or "later" is labeled `not_sure` because, when the planner claims `
 1. **Safety rules, worst case.** `applySafety('done', text)` must return the labeled response, branch, 988 flag, and help flag.
 2. **Through MCP.** The same claim goes to a fresh household as a real JSON-RPC `tools/call` `record_response` (in-process handler, memory store). The recorded wording, next step, and spoken reply must match the table above.
 3. **Rules planner tool choice.** `rulesPlanner` from `packages/api/src/planner.ts` (which runs `safetyPlan` first) is given each reply with a check-in in progress, with none, with the person's own "good night" check-in known, and as a family member speaking.
+4. **No check-in in progress, through MCP.** At 7:30, before any check-in has started, each reply goes to `record_response` with no `occurrenceId`, then one tick runs. A reply that needs a person must still be recorded, get the reply for its label, and send the family exactly one note. Any other reply must be refused, with nothing stored or sent.
 
 Across every case, two more checks run: no other claim (`later`, `not_yet`, `no`, `unsure`, `needs_help`) is ever upgraded to `done`, and crisis, self-harm, help, and distress wording must win over every claim. The person's own check-ins ("If I haven't said good night by ten, let Dana know") are checked too: no reply without the phrase closes one.
 
@@ -74,6 +75,8 @@ Run on 2026-10-21. All 265 cases pass, and so do the planner checks.
 | False alarms: a stronger reply than the words call for | 0 of 104 replies that need a person |
 | Over-cautious: a clear yes recorded as not sure | 0 of 39 |
 | Same claim through MCP `tools/call`: wording, next step, spoken reply | 265 / 265 |
+| No check-in in progress: recorded, the reply for its label, exactly one family note | 104 / 104 replies that need a person |
+| No check-in in progress: refused, nothing stored or sent | 161 / 161 other replies |
 | Another claim upgraded to done | 0 of 1,325 claim and reply pairs |
 
 ### Rules planner tool choice
@@ -85,7 +88,7 @@ Run on 2026-10-21. All 265 cases pass, and so do the planner checks.
 | Crisis, self-harm, help, and distress go to `record_response` as `needs_help`, words unchanged | 104 / 104 |
 | A named time becomes `defer_checkin` with that time | 15 / 15 |
 | Every other reply is deferred or recorded as later, not yet, no, or unsure | 107 / 107 |
-| No check-in in progress: 911 for crisis, 988 added for self-harm, the family's calming line for distress (and the 911 line with it for help) | 104 / 104 |
+| No check-in in progress: crisis, self-harm, help, and distress still go to `record_response` (no `occurrenceId`), words unchanged | 104 / 104 |
 | The person's own "good night" check-in known: only the phrase closes it, and the family's check-in still follows the label | 265 / 265 |
 | A family member's words never answer, defer, or pause a check-in | 265 / 265 |
 
@@ -107,7 +110,7 @@ The fix, in `packages/core/src/safety.ts` and a few lines of `packages/api/src/p
 - **Done with something else is not an answer.** "I've finished my crossword" and "I'm done with these questions" are not a yes.
 - **A general past-tense rule.** "I did it after breakfast" says when it happened, so deferral words are ignored after did, had, or finished when nothing in the reply points to the future.
 - **The planner sends `done` only when the safety rules would keep it.** It no longer treats every "help" or "fell" as a call for help, and it reads "in about an hour" and "give me thirty minutes" as times.
-- **Distress with no check-in in progress** now gets the family's calming line. It used to get "I can help with today's check-ins".
+- **Words that need a person, with no check-in in progress, now reach the family.** They used to get "I can help with today's check-ins" (distress) or the fixed 911 line (crisis), and no family note. Now `record_response` goes without an `occurrenceId`. The server notes it on today's current or most recent check-in, never one the person already reported done. Before any check-in has started, it uses a small record of its own ("outside a check-in"). The family gets one note that says it happened outside a check-in. The family's calming line, which may promise a call, is said only when a note will go to someone; with no one set up to be told, the reply promises nothing.
 
 Then 40 cases were added to measure the other direction: calls for help with and without an everyday object, alarm edges (negated, idiomatic, someone else's, long ago), and greetings from the person's own check-ins. Five earlier cases were relabeled from crisis to help under the new rule for a bare call for help: "Help me.", "I need help.", "Help!", "Yes. Help me.", and "help me please".
 
@@ -120,7 +123,7 @@ The rules lean toward caution. These replies are not in the cases, and the rules
 - "Could you help me?" and "I need help" get the calming line, the 911 line, and a family note, even when something small was meant.
 - "My dog is bleeding" gets the 911 line.
 - "I've had my breakfast" (with no yes), "I never miss it", and "Yes, I almost forgot, but I did it" are recorded as not sure, and the person is asked again.
-- With no check-in in progress, distress gets the calming line but no family note: there is no check-in to attach it to.
+- Upset words said outside a check-in, while a check-in's window is open, mark that check-in "needs human contact", so it is not asked again that day.
 
 ## Limits
 

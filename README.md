@@ -140,7 +140,7 @@ Every tool returns `structuredContent` plus a short text fallback. Signatures ar
 ## Safety and honesty, by design
 
 - **Rule-based safety layer on the hot path** (no LLM): hedges ("I think so", "maybe", "just about to") turn `done` into `unsure`; anything without clear affirmative wording fails closed to `unsure`, never `done`. A 265-reply eval assumes the worst case (the planner claims `done` for everything) and counts both directions: 0 unsafe misses (nothing recorded as done that was not said, no weaker reply than the words call for) and 0 false alarms. Its first run, on 225 replies, found 44 failures; the rules were fixed and the cases kept ([docs/evals.md](docs/evals.md)).
-- **Distress branch:** calming line only, no re-quiz, and no check-ins asked for 60 minutes. **Crisis branch** (explicit emergencies: a fall, can't breathe, chest pain, bleeding): fixed 911 line (plus 988 for self-harm wording), with no promise that anyone is told immediately. A bare "Help!" gets the calming line and the 911 line; "help me with the remote" raises no alarm.
+- **Distress branch:** calming line only, no re-quiz, and no check-ins asked for 60 minutes. With no check-in in progress, the family is still told (the note says it happened outside a check-in), and a calming line that promises a call is said only when a note goes to someone. **Crisis branch** (explicit emergencies: a fall, can't breathe, chest pain, bleeding): fixed 911 line (plus 988 for self-harm wording), with no promise that anyone is told immediately. A bare "Help!" gets the calming line and the 911 line; "help me with the remote" raises no alarm.
 - **The ledger never claims more than happened.** "No response" says whether the person was ever asked: *no response (not reached)* versus *no response (asked, no answer)*.
 - **The person's own check-ins:** two calls, so a model cannot create one in a single unconfirmed call (a spoken preview with an HMAC-signed token bound to the household and the exact draft, then the person's own words, which must be a clear yes). The same lint, consent gate, quiet hours, daily email cap, and pause apply; at most 3 at a time; the contact must already be on the email ladder. Only the person's own phrase closes one (a different phrase, no words, or "I haven't said good night" fails closed), and a crisis said while setting one up still gets the 911 line.
 - **Caregiver wording lint:** check-in text is read aloud, so drug names, doses, URLs, and long text are rejected with plain advice ("Use generic wording like 'your morning routine'").
@@ -170,7 +170,7 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 406 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier
+npm test            # 412 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier
 npm run typecheck
 npm run e2e         # replays the demo against a running deployment and checks the ledger
 ```

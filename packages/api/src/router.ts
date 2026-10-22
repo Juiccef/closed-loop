@@ -9,7 +9,8 @@ import {
   acknowledge,
   addDays,
   advanceClock,
-  DEMO_HOUSEHOLD_ID,
+  OUTSIDE_CHECKIN_ID,
+  OUTSIDE_LABEL,
   isValidHHMM,
   ledgerLine,
   lintCheckinText,
@@ -185,7 +186,7 @@ export function createApiHandler(cfg: ApiConfig) {
           occurrenceId: o.id,
           date: o.date,
           checkinId: o.checkinId,
-          label: def?.label ?? o.checkinId,
+          label: def?.label ?? (o.checkinId === OUTSIDE_CHECKIN_ID ? OUTSIDE_LABEL : o.checkinId),
           author: own ? 'person' : 'family',
           setBy: own ? plan.household.recipientName : null,
           tell: own ? (contactName(def!.self!.contactId) ?? null) : null,
@@ -299,7 +300,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     const h = await store.getHousehold(payload.householdId);
     if (!occ || !h) return page('Not found', '<p>This check-in no longer exists. The data may have been deleted.</p>');
     const defs = await store.listCheckins(payload.householdId);
-    const label = defs.find((d) => d.id === occ.checkinId)?.label ?? 'a check-in';
+    const label = defs.find((d) => d.id === occ.checkinId)?.label ?? (occ.checkinId === OUTSIDE_CHECKIN_ID ? OUTSIDE_LABEL : 'a check-in');
     const what = `${h.recipientName}: ${label}, ${occ.date}`;
     // GET only shows a button: email link scanners prefetch GET links and must not acknowledge for you.
     if (req.method === 'GET') {
@@ -330,11 +331,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
       if (path === '/planner' && req.method === 'POST') {
         if (!cfg.planner) return json(503, { error: 'Planner not configured.' });
-        const body = await readJson<Record<string, unknown>>(req);
-        // The family's calming line, for distress when there is no check-in to record it against.
-        const household = typeof body.householdId === 'string' && ID.test(body.householdId) ? body.householdId : DEMO_HOUSEHOLD_ID;
-        const calmingLine = (await store.listCheckins(household)).find((d) => d.active && !isOwnCheckin(d))?.calmingLine ?? null;
-        return json(200, await cfg.planner({ ...body, calmingLine }));
+        return json(200, await cfg.planner(await readJson(req)));
       }
 
       // ---- Admin (demo only) ----

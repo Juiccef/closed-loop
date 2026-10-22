@@ -151,6 +151,8 @@ export interface Occurrence {
   alertClaimedAt?: string;
   needsHumanNoteStatus?: AlertStatus;
   needsHumanCrisis?: boolean;
+  /** The words that called for a person were said outside a check-in (the family email says so). */
+  needsHumanOutside?: boolean;
   needsHumanClaimedAt?: string;
   needsHumanAttempts?: number;
   ackedAt?: string;

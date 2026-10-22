@@ -144,7 +144,7 @@ export interface CheckinBackend {
   getDueCheckins(ctx: CallerContext): Promise<ToolOutputs['get_due_checkins']>;
   recordResponse(
     ctx: CallerContext,
-    input: { occurrenceId: string; response: CheckinResponse; utterance?: string },
+    input: { occurrenceId?: string; response: CheckinResponse; utterance?: string },
   ): Promise<ToolOutputs['record_response']>;
   deferCheckin(ctx: CallerContext, input: { occurrenceId: string; until: DeferUntil }): Promise<ToolOutputs['defer_checkin']>;
   getMyStatus(ctx: CallerContext): Promise<ToolOutputs['get_my_status']>;
@@ -249,11 +249,13 @@ export function registerTools(server: McpServer, backend: CheckinBackend, ctx: C
       description:
         "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. " +
         'If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. ' +
-        'Read back the returned "say" text; if a calmingLine is returned, say it and do not ask further questions. ' +
+        'Read back the returned "say" text exactly; if a calmingLine is returned, do not ask further questions. ' +
         'When the person says the phrase of a check-in they set up themselves (for example "good night"), call this with that ' +
-        "check-in's occurrenceId from get_my_status, response done, and their words.",
+        "check-in's occurrenceId from get_my_status, response done, and their words. " +
+        'If the person sounds upset or asks for help and no check-in is in progress, call this without an occurrenceId, ' +
+        'with response needs_help and their words: the family is still told.',
       inputSchema: {
-        occurrenceId,
+        occurrenceId: occurrenceId.optional().describe('The check-in being answered. Omit only for needs_help with no check-in in progress.'),
         response: z.enum(RESPONSES),
         utterance: z.string().max(200).optional().describe("The person's own words, at most 200 characters."),
       },

@@ -73,10 +73,12 @@ function outcome(r: SafetyResult): Expect {
 const STRENGTH: Record<Expect, number> = { done: 0, not_sure: 0, distress: 1, help: 2, crisis: 3, self_harm: 4 };
 
 const MORNING = 'OCC#2026-10-19#morning#0';
-const CALM = "You're safe at home, Margaret. Dana will give you a call this evening.";
 
-/** Records one reply through the MCP endpoint on a fresh household, the way a planner that claims `done` would. */
-async function recordViaMcp(utterance: string) {
+/**
+ * Records one reply through the MCP endpoint on a fresh household, the way a planner that claims `done` would.
+ * `outside`: at 07:30, before any check-in has started, with no occurrenceId; then one tick sends what it queued.
+ */
+async function recordViaMcp(utterance: string, outside = false) {
   const d = await demo();
   const handle = createMcpHttpHandler({ bearerTokens: { eval: H }, allowedOrigins: [], resourceUrl: '', includeWwwAuthenticate: false }, coreBackend(d.store));
   const call = async (name: string, args: Record<string, unknown>) => {
@@ -89,13 +91,18 @@ async function recordViaMcp(utterance: string) {
     );
     return (await res.json()).result;
   };
-  setLocal('2026-10-19 08:05');
-  const due = await call('get_due_checkins', {});
-  expect(due.structuredContent.checkins[0].occurrenceId).toBe(MORNING);
-  const result = await call('record_response', { occurrenceId: MORNING, response: 'done', utterance });
-  expect(result.isError).toBeFalsy();
+  if (outside) setLocal('2026-10-19 07:30');
+  else {
+    setLocal('2026-10-19 08:05');
+    const due = await call('get_due_checkins', {});
+    expect(due.structuredContent.checkins[0].occurrenceId).toBe(MORNING);
+  }
+  const result = await call('record_response', outside ? { response: 'done', utterance } : { occurrenceId: MORNING, response: 'done', utterance });
   const calmingLine = (await d.store.listCheckins(H)).find((c) => c.id === 'morning')?.calmingLine;
-  return { ...(result.structuredContent as { recordedWording: string; nextStep: string; say: string }), calmingLine };
+  if (outside) await d.tick();
+  const familyNotes = d.mailer.sent.filter((m) => m.kind === 'needs_human').length;
+  const stored = (await d.store.listOccurrences(H, '2026-10-19')).filter((o) => o.state !== 'SCHEDULED').length;
+  return { ...(result.structuredContent as { recordedWording: string; nextStep: string; say: string }), isError: !!result.isError, calmingLine, familyNotes, stored };
 }
 
 function recordedFor(label: Expect, calmingLine: string | undefined) {
@@ -156,6 +163,7 @@ describe('fail-closed eval: the planner claims done for every reply', () => {
       expect({ response: r.response, branch: r.branch, selfHarm: r.selfHarm, helpRequest: !!r.helpRequest }).toEqual(SAFETY[c.expect]);
 
       const recorded = await recordViaMcp(c.text);
+      expect(recorded.isError).toBe(false);
       expect({ recordedWording: recorded.recordedWording, nextStep: recorded.nextStep, say: recorded.say }).toEqual(recordedFor(c.expect, recorded.calmingLine));
     });
   }
@@ -191,6 +199,28 @@ describe('fail-closed eval: the planner claims done for every reply', () => {
         .map((c) => `${claim}: ${c.id} "${c.text}"`),
     );
     expect(missed).toEqual([]);
+  });
+});
+
+describe('no check-in in progress (through MCP, before any check-in has started)', () => {
+  it('every reply that needs a person is still recorded, gets the reply for its label, and sends the family exactly one note', async () => {
+    const wrong: string[] = [];
+    for (const c of cases.filter((x) => NEEDS_HUMAN.has(x.expect))) {
+      const r = await recordViaMcp(c.text, true);
+      const got = { recordedWording: r.recordedWording, nextStep: r.nextStep, say: r.say, familyNotes: r.familyNotes };
+      const want = { ...recordedFor(c.expect, r.calmingLine), familyNotes: 1 };
+      if (JSON.stringify(got) !== JSON.stringify(want)) wrong.push(`${c.id} "${c.text}" -> ${JSON.stringify(got)}`);
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('every other reply is refused without a check-in, and nothing is stored or sent', async () => {
+    const wrong: string[] = [];
+    for (const c of cases.filter((x) => !NEEDS_HUMAN.has(x.expect))) {
+      const r = await recordViaMcp(c.text, true);
+      if (!r.isError || r.stored !== 0 || r.familyNotes !== 0) wrong.push(`${c.id} "${c.text}"`);
+    }
+    expect(wrong).toEqual([]);
   });
 });
 
@@ -258,18 +288,12 @@ describe('rules planner tool choice (same replies, a check-in in progress)', () 
     ).toEqual([]);
   });
 
-  it("with no check-in in progress: 911 for crisis, 988 added for self-harm, the family's calming line for distress (and 911 with it for help)", () => {
-    const want: Partial<Record<Expect, string>> = {
-      crisis: CRISIS_REPLY,
-      self_harm: SELF_HARM_REPLY,
-      distress: CALM,
-      help: `${CALM} ${CRISIS_REPLY}`,
-    };
+  it('with no check-in in progress, crisis, self-harm, help, and distress still go to record_response (no occurrenceId), words unchanged', () => {
     const wrong = cases
       .filter((c) => NEEDS_HUMAN.has(c.expect))
       .flatMap((c) => {
-        const p = rulesPlanner({ userText: c.text, current: null, calmingLine: CALM });
-        return p.toolCall === null && p.reply === want[c.expect] ? [] : [show(c, p.toolCall ?? p.reply)];
+        const p = rulesPlanner({ userText: c.text, current: null });
+        return JSON.stringify(p.toolCall) === JSON.stringify({ name: 'record_response', arguments: { response: 'needs_help', utterance: c.text } }) ? [] : [show(c, p.toolCall ?? p.reply)];
       });
     expect(wrong).toEqual([]);
   });

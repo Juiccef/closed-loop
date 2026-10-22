@@ -111,6 +111,9 @@ export const spoken = {
   laterNoTime: "Okay, I've noted that you'll do it later.",
   declined: "Okay, I've noted that. I won't ask about it again today.",
   needsHelp: "Okay. I'll ask your family to give you a call.",
+  /** Upset, and no one is set up to be told: nothing that promises a call. */
+  calmNoContact: "It's all right. Take a slow breath. You can call someone you trust.",
+  noCheckin: "There's no check-in to answer right now. You can say \"any check-ins?\" to hear today's.",
   alreadyDone: "That one is already noted as done. Thank you.",
   notFound: "I couldn't find that check-in. It may have already closed.",
   pausedToday: "Okay. Check-ins are paused for the rest of today.",
@@ -216,7 +219,8 @@ export function ownMissedEmail(args: {
 
 export function needsHumanEmail(args: { household: Household; occ: Occurrence; crisis: boolean; ackUrl: string }): EmailContent {
   const name = args.household.recipientName;
-  const paragraphs = [`${name} seemed confused or upset during a check-in. A call may help.`];
+  const where = args.occ.needsHumanOutside ? 'while talking with the assistant, outside a check-in' : 'during a check-in';
+  const paragraphs = [`${name} seemed confused or upset ${where}. A call may help.`];
   if (args.crisis) {
     paragraphs.push(
       `${name} used words that can mean they need help, and was told to call 911 if it is an emergency. This service cannot tell what happened and does not contact emergency services.`,

@@ -144,7 +144,12 @@ export function inLocalRange(hhmm: string, start: string, end: string): boolean 
 
 /** "1 pm", "1:30 pm", "noon" — for spoken replies. */
 export function spokenTime(instant: Date, tz: string): string {
-  const { hour, minute } = parseHHMM(localTime(instant, tz));
+  return spokenClock(localTime(instant, tz));
+}
+
+/** spokenTime for a local HH:MM with no date: "22:00" -> "10 pm". */
+export function spokenClock(hhmm: string): string {
+  const { hour, minute } = parseHHMM(hhmm);
   if (hour === 12 && minute === 0) return 'noon';
   if (hour === 0 && minute === 0) return 'midnight';
   const h12 = hour % 12 === 0 ? 12 : hour % 12;

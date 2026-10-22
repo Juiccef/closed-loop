@@ -83,6 +83,37 @@ describe('MCP protocol (in-process, real backend)', () => {
     expect(done.structuredContent.recordedWording).toBe('reported by the person');
   });
 
+  it('set_my_checkin is two calls: a preview with a token, then the token and the person’s yes', async () => {
+    const { call, store } = await setup();
+    setLocal('2026-10-19 20:00');
+    const preview = await call('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana', utterance: "If I haven't said good night by ten, let Dana know." });
+    expect(preview.structuredContent).toMatchObject({ status: 'confirm_needed', expiresInSeconds: 300, nextStep: 'none' });
+    expect(preview.content[0].text).toBe(preview.structuredContent.say);
+    expect((await store.listCheckins(H)).some((d) => d.author === 'person')).toBe(false);
+
+    // A model cannot create one in a single call, even by inventing a token.
+    const forged = await call('set_my_checkin', { phrase: 'good night', by: '22:00', confirmToken: 'abc.def', utterance: 'Yes' });
+    expect(forged.structuredContent.status).toBe('not_set');
+    const noAnswer = await call('set_my_checkin', { confirmToken: preview.structuredContent.confirmToken });
+    expect(noAnswer.isError).toBe(true);
+
+    const set = await call('set_my_checkin', { confirmToken: preview.structuredContent.confirmToken, utterance: 'Yes, please.' });
+    expect(set.structuredContent).toMatchObject({ status: 'set', checkin: { phrase: 'good night', byLocal: '22:00', tell: 'Dana', repeat: 'tonight' } });
+    expect(set._meta.ui).toEqual({ resourceUri: 'ui://closed-loop/checkin-card', invoking: 'Setting up your check-in', invoked: 'Your check-in' });
+
+    setLocal('2026-10-19 21:30');
+    const status = await call('get_my_status');
+    const [mine] = status.structuredContent.mine;
+    expect(mine).toMatchObject({ phrase: 'good night', recorded: 'not said yet', occurrenceId: set.structuredContent.checkin.occurrenceId });
+    const closed = await call('record_response', { occurrenceId: mine.occurrenceId, response: 'done', utterance: 'Good night' });
+    expect(closed.structuredContent.recordedWording).toBe('reported by the person');
+
+    const cancelled = await call('cancel_my_checkin', { phrase: 'good night' });
+    expect(cancelled.structuredContent).toMatchObject({ status: 'cancelled', remaining: 0 });
+    expect((await call('set_my_checkin', { phrase: 'good night', by: '25:00' })).isError).toBe(true);
+    expect((await call('set_my_checkin', { phrase: 'take 10mg', by: '09:00' })).isError).toBe(true);
+  });
+
   it('MCP App card: listed and readable as text/html;profile=mcp-app, referenced by tools and results', async () => {
     const { rpc, call } = await setup();
     const init = await rpc('initialize', {

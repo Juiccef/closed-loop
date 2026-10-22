@@ -20,6 +20,10 @@ Rules:
 - Any sign of confusion, fear, pain, a fall, or asking for help: record_response with "needs_help".
 - "Pause", "stop asking", "leave me alone": pause_checkins with no questions asked.
 - "How am I doing", "who can see this": get_my_status.
+- "If I haven't said good night by ten, let Dana know": set_my_checkin with phrase, by (24-hour HH:MM), tell, repeat, and their words as utterance. That only previews.
+- If a set_my_checkin preview is waiting, their next words are the answer: set_my_checkin with only confirmToken and their words as utterance.
+- "Cancel my good night check": cancel_my_checkin with the phrase.
+- If they say the phrase of one of their own check-ins ("good night"), call record_response with that check-in's occurrenceId, response "done", and their words.
 - Otherwise, to see what is due: get_due_checkins.
 Do not give medical advice. Do not ask follow-up questions.`;
 
@@ -34,9 +38,15 @@ export async function bedrockPlanner(req: PlannerRequest, modelId: string): Prom
   const started = Date.now();
   const { BedrockRuntimeClient, ConverseCommand } = await import('@aws-sdk/client-bedrock-runtime');
   client ??= new BedrockRuntimeClient({ maxAttempts: 1 });
-  const context = req.current
-    ? `Check-in in progress: occurrenceId=${req.current.occurrenceId}, label="${req.current.label}", question="${req.current.prompt}".`
-    : 'No check-in is in progress.';
+  const context = [
+    req.current
+      ? `Check-in in progress: occurrenceId=${req.current.occurrenceId}, label="${req.current.label}", question="${req.current.prompt}".`
+      : 'No check-in is in progress.',
+    req.pending?.confirmToken ? `A set_my_checkin preview is waiting for the answer: confirmToken=${req.pending.confirmToken}.` : '',
+    req.mine?.length ? `The person's own check-ins: ${req.mine.map((m) => `"${m.phrase}" occurrenceId=${m.occurrenceId || 'none'}`).join('; ')}.` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
   const res = await client.send(
     new ConverseCommand({
       modelId,

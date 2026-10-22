@@ -165,3 +165,21 @@ export function applySafety(claimed: CheckinResponse, utterance?: string): Safet
 function downgrade(reason: string): SafetyResult {
   return { response: 'unsure', branch: 'none', selfHarm: false, downgraded: true, reason };
 }
+
+const FUTURE = [/\bi'?ll (say|tell)\b/, /\bwill (say|tell)\b/, /\bgoing to say\b/];
+
+/**
+ * For a check-in the person set up themselves, saying their own phrase ("good night") is the report.
+ * Crisis and distress wording still win. No words, a different phrase, or a negated or postponed one
+ * ("I haven't said good night", "I'll say good night later") fails closed to `unsure`.
+ */
+export function applySafetyForPhrase(claimed: CheckinResponse, utterance: string | undefined, phrase: string): SafetyResult {
+  const base = applySafety(claimed, utterance);
+  if (base.branch !== 'none' || claimed !== 'done') return base;
+  const text = utterance ? normalizeUtterance(utterance) : '';
+  const compact = (s: string) => s.replace(/[^a-z0-9]/g, '');
+  if (!text || !compact(text).includes(compact(normalizeUtterance(phrase)))) return downgrade('own phrase not said');
+  if (any(NEGATION, text)) return downgrade('negation wording');
+  if (any(DEFERRAL, text) || any(FUTURE, text)) return downgrade('deferral wording');
+  return { response: 'done', branch: 'none', selfHarm: false, downgraded: false, reason: 'own phrase said' };
+}

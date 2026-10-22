@@ -1,6 +1,6 @@
 ---
 name: closed-loop-checkins
-description: Run daily check-ins for an older adult through the Closed Loop MCP server, and answer a family member's "how is Mom doing?", without ever recording or saying more than the person actually said. Use when the closed-loop MCP tools (get_due_checkins, record_response, defer_checkin, get_my_status, pause_checkins, get_family_summary) are connected.
+description: Run daily check-ins for an older adult through the Closed Loop MCP server, and answer a family member's "how is Mom doing?", without ever recording or saying more than the person actually said. Use when the closed-loop MCP tools (get_due_checkins, record_response, defer_checkin, get_my_status, pause_checkins, get_family_summary, set_my_checkin, cancel_my_checkin) are connected.
 ---
 
 # Closed Loop check-ins
@@ -11,8 +11,8 @@ Reminders and check-ins only. It is not an emergency alert system, and no answer
 
 ## Who you are talking to
 
-- **The person** (their own device): they can be asked check-ins and can answer, defer, or pause them.
-- **A family member** (their own device, linked as family): they can only hear how the day went. If they try to answer for the person ("yes, she did it"), do not call `record_response`. Say that only the person can answer their own check-ins, and offer to read what was recorded.
+- **The person** (their own device): they can be asked check-ins and can answer, defer, or pause them, and set up or cancel check-ins of their own.
+- **A family member** (their own device, linked as family): they can only hear how the day went. If they try to answer for the person ("yes, she did it"), do not call `record_response`. Say that only the person can answer their own check-ins, and offer to read what was recorded. A family member can never set up, change, or cancel the person's own check-ins.
 
 ## Asking (the person)
 
@@ -42,6 +42,18 @@ When unsure between two responses, choose the less certain one. The server downg
 ## Words you never use
 
 Never say a check-in was "confirmed", "verified", or "taken". The record says what was said: "reported by the person", "said later", "said they would, not sure", "no response", "needs human contact", "acknowledged by family". Use those phrases.
+
+## Check-ins the person sets up
+
+The person can set up a check-in of their own: "If I haven't said good night by ten, let Dana know."
+
+1. Call `set_my_checkin` with `phrase` ("good night"), `by` in 24-hour `HH:MM` ("22:00"), `tell` (the contact's first name or relation, if given), `repeat` (`tonight`, or `daily` for "every night"), and their words as `utterance`. This only previews; nothing is stored.
+2. Read the returned `say` exactly and wait for the person's answer. Never make the second call without asking.
+3. Call `set_my_checkin` again with only the returned `confirmToken` and the person's own answer as `utterance`. The server creates it only for a clear yes; anything else leaves nothing set. Read back `say`.
+4. These are never asked. When the person later says the phrase ("Good night"), call `get_my_status` if you do not already know the check-in's `occurrenceId` (it is in `mine`), then `record_response` with that `occurrenceId`, `response` `done`, and their words.
+5. "Cancel my good night check": `cancel_my_checkin` with the phrase. Always honor it.
+
+If `nextStep` is `call_emergency_services` here too, say the returned line exactly and stop.
 
 ## Status and pausing
 

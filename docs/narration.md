@@ -16,6 +16,14 @@ Voice: Carolyn (warm, grounded American narrator), model `eleven_v4`. Generated 
 | 8 | 15.6 | From Dana's own Alexa, Dana asks: how is Mom doing today? Dana hears exactly what was recorded. Needs human contact; a call may help. And Dana's Alexa can't answer for Margaret. Only Margaret can. |
 | 9 | 20.7 | The same endpoint passes the official MCP Inspector, links accounts with OAuth the way Alexa Plus add-ons do, and ships an Agent Skill for any agent. It runs on Lambda, DynamoDB, EventBridge and SES. What Alexa Plus needs next is a consent-based way for add-ons to speak first. |
 
+## Draft: a new scene for the person's own check-ins (not recorded, not in the video yet)
+
+Would go between scenes 8 and 9, right after "Only Margaret can." About 15 seconds (45 words at this voice's pace). On screen: the simulator chip **"If I haven't said good night by ten, let Dana know."**, the preview card, **"Yes, please."**, then **"Good night"** and the closed ring; optionally the console row marked *Set by Margaret*.
+
+| # | Seconds (est.) | Text |
+|---|---|---|
+| 8b | ~15 | And Margaret can write part of the safety net, by voice. If I haven't said good night by ten, let Dana know. Nothing is set until Margaret says yes. It's never asked. Say good night, and the loop closes. If not, Dana is told, in Margaret's name. |
+
 If AWS raises the Bedrock quota before recording, scene 9 can say "Lambda, DynamoDB, EventBridge, SES and Bedrock". Until then, leave Bedrock out: the deployed planner is falling back to rules.
 
 ## Editing tips

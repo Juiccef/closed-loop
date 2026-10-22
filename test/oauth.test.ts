@@ -120,6 +120,8 @@ describe('OAuth 2.1 account linking (authorization code + PKCE)', () => {
       ['record_response', { occurrenceId, response: 'done' }],
       ['defer_checkin', { occurrenceId, until: 'in_1_hour' }],
       ['pause_checkins', { scope: 'today' }],
+      ['set_my_checkin', { phrase: 'good night', by: '22:00' }],
+      ['cancel_my_checkin', {}],
     ] as const) {
       const r = (await (await t.mcp(family.access_token, 'tools/call', { name, arguments: args })).json()).result;
       expect(r.isError, name).toBe(true);

@@ -1,5 +1,5 @@
 // MCP App card (MCP Apps extension, SEP-1865): one self-contained ui:// resource that renders any of the
-// five tool results. Tools reference it from their definition (_meta.ui.resourceUri, per the MCP Apps spec)
+// eight tool results. Tools reference it from their definition (_meta.ui.resourceUri, per the MCP Apps spec)
 // and from their results (Alexa+'s documented placement). Clients without UI support get the text result.
 // The card runs under the spec's restrictive default CSP: inline script and style only, no network.
 
@@ -74,6 +74,14 @@ export const CARD_HTML = `<!doctype html>
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="' + color + '" stroke-width="3" stroke-linecap="round" pathLength="100" stroke-dasharray="' + dash + '" transform="rotate(-90 12 12)"/>' + dot + '</svg>';
   }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function clock(hhmm) {
+    var p = String(hhmm || '').split(':'), h = Number(p[0]), m = p[1] || '00';
+    if (isNaN(h)) return '';
+    if (h === 12 && m === '00') return 'noon';
+    if (h === 0 && m === '00') return 'midnight';
+    return (h % 12 || 12) + (m === '00' ? '' : ':' + m) + (h < 12 ? ' am' : ' pm');
+  }
+  function ownTitle(c) { return 'Tell ' + (c.tell || 'family') + ' if there\u2019s no \u201c' + c.phrase + '\u201d by ' + clock(c.byLocal); }
   function setKind(kind) { requestAnimationFrame(function () { $('ring').setAttribute('data-kind', kind); }); }
   function resize() { var r = document.documentElement.getBoundingClientRect(); send({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { width: Math.ceil(r.width), height: Math.ceil(r.height) } }); }
 
@@ -97,6 +105,24 @@ export const CARD_HTML = `<!doctype html>
       list.innerHTML = sc.checkins.map(function (c) { return '<li>' + mini('open') + '<span>' + esc(c.label) + (c.isFollowUp ? ' \\u00b7 follow-up' : '') + '</span></li>'; }).join('');
       list.hidden = !sc.checkins.length;
       setKind(sc.checkins.length ? 'open' : (sc.paused ? 'paused' : 'closed'));
+    } else if (sc.status === 'confirm_needed' || sc.status === 'set' || sc.status === 'not_set') {
+      var c = sc.checkin;
+      if (sc.status === 'not_set' || !c) {
+        text('kicker', 'Your own check-in');
+        text('title', 'Nothing was set');
+        text('sub', sc.nextStep === 'call_emergency_services' ? 'Told to call 911 if it is an emergency.' : '');
+        setKind(sc.nextStep === 'call_emergency_services' ? 'human' : 'paused');
+      } else {
+        text('kicker', sc.status === 'set' ? 'Set by you' : 'Your own check-in \u00b7 not set yet');
+        text('title', ownTitle(c));
+        text('sub', sc.status === 'set' ? 'Closes when you say \u201c' + c.phrase + '\u201d' + (c.repeat === 'daily' ? ', every day.' : '.') : 'Say yes to set it up.');
+        setKind(sc.status === 'set' ? 'open' : 'later');
+      }
+    } else if ('remaining' in sc) {
+      text('kicker', sc.status === 'cancelled' ? 'Cancelled' : 'Your own check-ins');
+      text('title', sc.status === 'cancelled' && sc.checkin ? '\u201c' + sc.checkin.phrase + '\u201d by ' + clock(sc.checkin.byLocal) : 'Nothing cancelled');
+      text('sub', sc.status === 'cancelled' && sc.checkin ? (sc.checkin.tell || 'Family') + ' won\u2019t be emailed about it.' : '');
+      setKind('paused');
     } else if (sc.recordedWording) {
       var kind = sc.recordedAs === 'reported_by_person' ? 'closed' : sc.recordedAs === 'needs_human_contact' ? 'human' : sc.recordedAs === 'not_recorded' ? 'paused' : 'later';
       var next = { none: '', will_ask_again_later: 'Will ask again later.', family_will_be_told: 'Family will get a note.', call_emergency_services: 'Told to call 911 if it is an emergency.' }[sc.nextStep] || '';
@@ -113,6 +139,9 @@ export const CARD_HTML = `<!doctype html>
       text('kicker', 'Today');
       text('title', sc.reported + ' reported \\u00b7 ' + sc.open + ' open');
       text('sub', sc.sharedWith && sc.sharedWith.length ? 'Shared with ' + sc.sharedWith.join(', ') + ' only if a loop stays open.' : 'Not shared with anyone.');
+      var mine = sc.mine || [];
+      list.innerHTML = mine.map(function (m) { var heard = /^reported/.test(m.recorded); return '<li>' + mini(heard ? 'closed' : 'open') + '<span><span class="lbl">\u201c' + esc(m.phrase) + '\u201d by ' + esc(clock(m.byLocal)) + ' \u00b7 set by you</span><span class="rec">' + esc(m.recorded || 'not said yet') + ' \u00b7 tells ' + esc(m.tell) + '</span></span></li>'; }).join('');
+      list.hidden = !mine.length;
       setKind(sc.open ? 'open' : 'closed');
     } else if ('pausedUntilLocal' in sc) {
       text('kicker', 'Paused');

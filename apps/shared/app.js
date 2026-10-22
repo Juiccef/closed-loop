@@ -111,6 +111,7 @@ const KIND_BY_STATE = {
   ESCALATED_L2: 'alert',
   ACKNOWLEDGED: 'acked',
   PAUSED: 'paused',
+  CANCELLED: 'paused',
 };
 
 export function loopKind(state) {

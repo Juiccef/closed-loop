@@ -48,8 +48,33 @@ export interface TimeWindow {
   end: string;
 }
 
+/** Who wrote a check-in. Family check-ins are asked; the person's own are never asked, only listened for. */
+export const CHECKIN_AUTHORS = ['family', 'person'] as const;
+export type CheckinAuthor = (typeof CHECKIN_AUTHORS)[number];
+
+export const SELF_REPEATS = ['tonight', 'daily'] as const;
+export type SelfRepeat = (typeof SELF_REPEATS)[number];
+
+/** A check-in the person set up by voice: "If I haven't said good night by ten, let Dana know." */
+export interface SelfCheckin {
+  /** What the person will say that closes the loop, in their own words ("good night"). Linted like a label. */
+  phrase: string;
+  /** Local deadline, HH:MM. The window ends here. */
+  by: string;
+  /** The contact told if the loop stays open. Always one of the ladder's contacts. */
+  contactId: string;
+  repeat: SelfRepeat;
+  /** For `tonight`: the one local date (of the window start) this check-in covers. */
+  date?: string;
+  cancelledAt?: string;
+}
+
 export interface CheckinDefinition {
   id: string;
+  /** Missing on definitions stored before authors existed: treated as 'family'. */
+  author?: CheckinAuthor;
+  /** Set only when author is 'person'. */
+  self?: SelfCheckin;
   /** Caregiver-authored, generic ("your morning routine"). Linted: no drug terms, doses, or URLs. */
   label: string;
   /** The question as spoken. Caregiver-authored and linted like the label. */
@@ -88,6 +113,7 @@ export const OCCURRENCE_STATES = [
   'ESCALATED_L2',
   'ACKNOWLEDGED',
   'PAUSED',
+  'CANCELLED',
 ] as const;
 export type OccurrenceState = (typeof OCCURRENCE_STATES)[number];
 
@@ -171,6 +197,8 @@ export const EVENT_TYPES = [
   'plan_expired',
   'account_linked',
   'account_unlinked',
+  'self_checkin_set',
+  'self_checkin_cancelled',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

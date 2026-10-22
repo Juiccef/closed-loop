@@ -65,11 +65,11 @@ const OPEN_REASON_WORDING: Record<OpenReason, string> = {
   declined: 'said no',
 };
 
-/** One line for the caregiver ledger. */
-export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string | undefined): string {
+/** One line for the caregiver ledger. `own`: a check-in the person set up, which is listened for, never asked. */
+export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string | undefined, opts: { own?: boolean } = {}): string {
   switch (occ.state) {
     case 'SCHEDULED':
-      return LEDGER_WORDING.scheduled;
+      return opts.own ? 'not said yet' : LEDGER_WORDING.scheduled;
     case 'PROMPTED':
       return LEDGER_WORDING.asked;
     case 'DEFERRED':
@@ -94,6 +94,8 @@ export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string
     }
     case 'PAUSED':
       return 'paused';
+    case 'CANCELLED':
+      return 'cancelled by the person';
   }
 }
 
@@ -182,6 +184,33 @@ export function missedEmail(args: {
   if (level === 2) paragraphs.push(`This is day ${consecutiveDays} in a row that this check-in stayed open without anyone acknowledging it, so you are receiving this as the second contact.`);
   paragraphs.push('If you have already been in touch, acknowledge this to stop further emails about it.');
   const subject = level === 2 ? `Second notice: ${def.label} (not an emergency alert)` : `Check-in update: ${def.label} (not an emergency alert)`;
+  return render(subject, paragraphs, { href: ackUrl, label: 'Acknowledge' });
+}
+
+/**
+ * A check-in the person set up by voice stayed open: sent in the person's name, to the contact they chose.
+ * Uses the person's name throughout, never an assumed pronoun.
+ */
+export function ownMissedEmail(args: {
+  household: Household;
+  def: CheckinDefinition;
+  occ: Occurrence;
+  level: 1 | 2;
+  consecutiveDays: number;
+  ackUrl: string;
+}): EmailContent {
+  const { household: h, def, occ, level, consecutiveDays, ackUrl } = args;
+  const name = h.recipientName;
+  const phrase = def.self?.phrase ?? 'the check-in phrase';
+  const by = spokenTime(new Date(occ.windowEnd), h.timezone);
+  const paragraphs = [
+    `${name} asked Closed Loop to let you know if ${name} hadn't said "${phrase}" by ${by}. ${name} hasn't yet. This is not an emergency alert.`,
+    `${name} set this up by voice${def.self?.repeat === 'daily' ? ', for every day' : ''}. Closed Loop never asks ${name} about it; the loop closes when ${name} says it.`,
+  ];
+  if (level === 2) paragraphs.push(`This is day ${consecutiveDays} in a row that this check-in stayed open without anyone acknowledging it, so you are receiving this as the second contact.`);
+  paragraphs.push('If you have already been in touch, acknowledge this to stop further emails about it.');
+  const subject =
+    level === 2 ? `Second notice: ${name}'s "${phrase}" by ${by} (not an emergency alert)` : `${name} asked us to let you know: no "${phrase}" by ${by} (not an emergency alert)`;
   return render(subject, paragraphs, { href: ackUrl, label: 'Acknowledge' });
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySafety, type CheckinResponse } from '../packages/core/src/safety';
+import { applySafety, applySafetyForPhrase, type CheckinResponse } from '../packages/core/src/safety';
 
 // Phase 0 spike 5 / Phase 5: 20-utterance fail-closed eval.
 // Worst case: the planner (an LLM) claims `done` for every utterance. The rules must still
@@ -52,5 +52,22 @@ describe('fail-closed eval (planner claims done for everything)', () => {
   it('never upgrades a claim to done', () => {
     const claims: CheckinResponse[] = ['later', 'not_yet', 'no', 'unsure', 'needs_help'];
     for (const claim of claims) for (const c of cases) expect(applySafety(claim, c.text).response).not.toBe('done');
+  });
+});
+
+describe('check-ins the person set up: only their own phrase closes one', () => {
+  it('none of the 20 utterances closes a "good night" check-in; crisis and distress branches are unchanged', () => {
+    for (const c of cases) {
+      const r = applySafetyForPhrase('done', c.text, 'good night');
+      expect(r.response, c.text).not.toBe('done');
+      if (c.branch) expect(r.branch).toBe(c.branch);
+    }
+  });
+
+  it('saying the phrase closes it; crisis words with the phrase still go to the crisis branch', () => {
+    for (const text of ['Good night.', 'Goodnight, Alexa', "Good night, I'm going to bed"]) expect(applySafetyForPhrase('done', text, 'good night').response, text).toBe('done');
+    const r = applySafetyForPhrase('done', "Good night. I fell and I can't get up.", 'good night');
+    expect(r).toMatchObject({ response: 'needs_help', branch: 'crisis' });
+    expect(applySafetyForPhrase('later', 'Good night', 'good night').response).toBe('later'); // never upgraded
   });
 });

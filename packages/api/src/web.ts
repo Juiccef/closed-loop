@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { coreBackend, createMcpHttpHandler, type McpHttpConfig } from '@closed-loop/mcp-server';
 import type { Store } from '@closed-loop/core';
 import { createApiHandler, type ApiConfig } from './router';
@@ -9,7 +10,9 @@ export type WebHandler = (req: Request) => Promise<Response>;
  * acknowledge links, and static pages. (Two Function URLs that reference each other form a CloudFormation cycle.)
  */
 export function createWebHandler(store: Store, mcp: McpHttpConfig, api: ApiConfig): WebHandler {
-  const mcpHandler = createMcpHttpHandler(mcp, coreBackend(store));
+  // set_my_checkin confirm tokens are signed with a key derived from the ack-link secret, so every instance agrees.
+  const confirmSecret = createHmac('sha256', api.ackSecret).update('closed-loop/set-my-checkin/v1').digest('base64url');
+  const mcpHandler = createMcpHttpHandler(mcp, coreBackend(store, { confirmSecret }));
   const apiHandler = createApiHandler(api);
   return (req) => {
     const p = new URL(req.url).pathname;

@@ -1,10 +1,11 @@
 // The five care-recipient tools, as plain async functions over the Store.
 // Hot path rules: storage only (no network, no LLM), fail closed, never re-quiz after distress.
 
-import { addDays, addMinutes, localDateTime, localTime, minutesBetween, zonedInstant } from './clock';
+import { addDays, addMinutes, localDateTime, localTime, minutesBetween, spokenTime, zonedInstant } from './clock';
 import { parseOccurrenceId, type CheckinDefinition, type HouseholdId, type Occurrence, type OccurrenceState } from './model';
-import { loadPlan, materialize, newOccurrence, type PlanContext } from './plan';
-import { CRISIS_REPLY, RESPONSES, SELF_HARM_REPLY, applySafety, type CheckinResponse } from './safety';
+import { isOwnCheckin, loadPlan, materialize, newOccurrence, runsOn, type PlanContext } from './plan';
+import { CRISIS_REPLY, RESPONSES, SELF_HARM_REPLY, applySafety, applySafetyForPhrase, type CheckinResponse } from './safety';
+import { ownCheckinSummaries, ownStatusSentence, type OwnCheckinSummary } from './self-checkins';
 import { ConflictError, clip, type Store } from './store';
 import { LEDGER_WORDING, followUpPrompt, ledgerLine, ledgerStatusFor, spoken, statusSentence, type LedgerStatus } from './wording';
 
@@ -49,6 +50,8 @@ export interface StatusResult {
   open: number;
   sharedWith: string[];
   paused: boolean;
+  /** Check-ins the person set up by voice, with the occurrence that saying the phrase now would close. */
+  mine: OwnCheckinSummary[];
   say: string;
 }
 export interface PauseResult {
@@ -146,7 +149,7 @@ export async function getDueCheckins(store: Store, householdId: HouseholdId): Pr
   const served = await Promise.all(
     occs.map(async (o): Promise<DueCheckin | null> => {
       const def = defs.get(o.checkinId);
-      if (!def) return null;
+      if (!def || isOwnCheckin(def)) return null; // the person's own check-ins are listened for, never asked
       const kind = serveKind(o, def, now);
       if (!kind) return null;
       const written = await mutateOccurrence(
@@ -201,9 +204,12 @@ export async function recordResponse(
   householdId: HouseholdId,
   input: { occurrenceId: string; response: CheckinResponse; utterance?: string },
 ): Promise<RecordResult> {
-  if (!parseOccurrenceId(input.occurrenceId)) throw new CheckinInputError(spoken.notFound);
-  const [ctx, occ] = await Promise.all([loadPlan(store, householdId), store.getOccurrence(householdId, input.occurrenceId)]);
-  const safety = applySafety(input.response, input.utterance);
+  const parsed = parseOccurrenceId(input.occurrenceId);
+  if (!parsed) throw new CheckinInputError(spoken.notFound);
+  const [ctx, stored] = await Promise.all([loadPlan(store, householdId), store.getOccurrence(householdId, input.occurrenceId)]);
+  const own = ctx.plan?.checkins.find((d) => d.id === parsed.checkinId && isOwnCheckin(d));
+  // For the person's own check-in, saying its phrase ("good night") is the report; everything else fails closed as usual.
+  const safety = own ? applySafetyForPhrase(input.response, input.utterance, own.self!.phrase) : applySafety(input.response, input.utterance);
   const crisisSay = safety.selfHarm ? SELF_HARM_REPLY : CRISIS_REPLY;
 
   // No consent, revoked, or expired: store nothing. The safety reply still goes out.
@@ -216,9 +222,18 @@ export async function recordResponse(
       say: safety.branch === 'crisis' ? crisisSay : spoken.inactive,
     };
   }
+  const { plan, now, today } = ctx;
+  // An own check-in's window may not be stored yet (the tick creates them once a minute): create it here.
+  const createOwn = async (): Promise<Occurrence | undefined> => {
+    if (!own || parsed.windowIdx !== 0 || !runsOn(own, parsed.date) || (parsed.date !== today && parsed.date !== addDays(today, -1))) return undefined;
+    const v = newOccurrence(householdId, own, parsed.date, 0, plan.household.timezone, now);
+    if (new Date(v.windowEnd) <= new Date(own.createdAt)) return undefined;
+    await store.createOccurrence(v);
+    return store.getOccurrence(householdId, v.id);
+  };
+  const occ = stored ?? (await createOwn());
   if (!occ) throw new CheckinInputError(spoken.notFound);
 
-  const { plan, now } = ctx;
   const tz = plan.household.timezone;
   const def = plan.checkins.find((d) => d.id === occ.checkinId) ?? (await store.listCheckins(householdId)).find((d) => d.id === occ.checkinId);
   const label = def?.label ?? 'a check-in';
@@ -249,9 +264,11 @@ export async function recordResponse(
         return next;
       }
       if (cur.state === 'NEEDS_HUMAN') return next; // sticky until a family member acknowledges
+      if (own && final !== 'done') return next; // only the person's own phrase closes it; the loop keeps waiting
       if (final === 'done') {
         next.state = 'REPORTED_DONE';
-        next.reportedLate = !open || AFTER_CLOSE.has(cur.state);
+        // An own check-in said early in the day ("good night" before its window opens) is on time.
+        next.reportedLate = (own ? new Date(cur.windowEnd) <= now : !open) || AFTER_CLOSE.has(cur.state);
         next.deferUntil = undefined;
         cancelPendingAlert();
         return next;
@@ -271,8 +288,10 @@ export async function recordResponse(
   );
   if (!written) throw new Error(`could not record response for ${occ.id}`);
 
-  const status = ledgerStatusFor(final);
-  const wording = LEDGER_WORDING[status];
+  // Other words to the person's own check-in leave it waiting for the phrase: nothing is recorded as an answer.
+  const waiting = !!own && final !== 'done' && final !== 'needs_help';
+  const status: RecordResult['recordedAs'] = waiting ? 'not_recorded' : ledgerStatusFor(final);
+  const wording = waiting ? 'not said yet' : LEDGER_WORDING[ledgerStatusFor(final)];
   const tasks: Promise<void>[] = [
     store.appendEvent({ householdId, at: nowIso, type: 'response_recorded', occurrenceId: occ.id, detail: `${label}: ${wording}.` }),
   ];
@@ -281,7 +300,7 @@ export async function recordResponse(
       store.putUtterance({ householdId, occurrenceId: occ.id, at: nowIso, text: clip(input.utterance), claimed: input.response, stored: final }),
     );
   }
-  if (safety.downgraded) {
+  if (safety.downgraded && !waiting) {
     tasks.push(
       store.appendEvent({
         householdId,
@@ -307,12 +326,21 @@ export async function recordResponse(
 
   const hasL1 = plan.ladder.l1ContactIds.length > 0;
   const base = { occurrenceId: occ.id, recordedAs: status, recordedWording: wording };
+  if (waiting && safety.branch === 'none') return { ...base, nextStep: 'none', say: `Okay. I'll note it when you say ${own!.self!.phrase}.` };
   if (safety.branch === 'crisis') return { ...base, nextStep: 'call_emergency_services', say: crisisSay };
   if (final === 'needs_help') {
     const calmingLine = def?.calmingLine;
     return { ...base, nextStep: hasL1 ? 'family_will_be_told' : 'none', calmingLine, say: calmingLine ?? spoken.needsHelp };
   }
   if (written.state === 'NEEDS_HUMAN') return { ...base, nextStep: 'none', say: def?.calmingLine ?? spoken.needsHelp };
+  if (final === 'done' && own) {
+    const contact = plan.household.contacts.find((c) => c.id === own.self!.contactId)?.name ?? 'your family';
+    const hello = /^good /.test(own.self!.phrase) ? `${own.self!.phrase.charAt(0).toUpperCase()}${own.self!.phrase.slice(1)}. ` : '';
+    const say = written.reportedLate
+      ? `${hello}I've noted it. It was after ${spokenTime(new Date(written.windowEnd), tz)}, so ${contact} may already have been emailed.`
+      : `${hello}I've noted it, so ${contact} won't be emailed about it.`;
+    return { ...base, nextStep: 'none', say };
+  }
   if (final === 'done') return { ...base, nextStep: 'none', say: spoken.done };
   const willAsk = written.state === 'DEFERRED' || (written.state === 'UNSURE' && def !== undefined && written.reasks < def.maxReasks && inWindow(written, now));
   if (written.state === 'DEFERRED' && written.deferUntil) {
@@ -395,12 +423,14 @@ export async function deferCheckin(store: Store, householdId: HouseholdId, input
 
 export async function getMyStatus(store: Store, householdId: HouseholdId): Promise<StatusResult> {
   const ctx = await loadPlan(store, householdId);
-  if (!ctx.plan) return { date: ctx.today, reported: 0, open: 0, sharedWith: [], paused: false, say: spoken.inactive };
+  if (!ctx.plan) return { date: ctx.today, reported: 0, open: 0, sharedWith: [], paused: false, mine: [], say: spoken.inactive };
   const { plan, now, today } = ctx;
-  const stored = new Map((await store.listOccurrences(householdId, today)).map((o) => [o.id, o]));
-  // Count windows not yet materialized too, without writing (this tool is read-only).
+  const [occsToday, mine] = await Promise.all([store.listOccurrences(householdId, today), ownCheckinSummaries(store, ctx)]);
+  const stored = new Map(occsToday.map((o) => [o.id, o]));
+  // Count windows not yet materialized too, without writing (this tool is read-only). Own check-ins are described separately.
   const all: Occurrence[] = [];
   for (const def of plan.checkins) {
+    if (isOwnCheckin(def)) continue;
     def.windows.forEach((_, idx) => {
       const virtual = newOccurrence(householdId, def, today, idx, plan.household.timezone, now);
       all.push(stored.get(virtual.id) ?? virtual);
@@ -413,8 +443,9 @@ export async function getMyStatus(store: Store, householdId: HouseholdId): Promi
   const l1 = plan.ladder.l1ContactIds.map((id) => contacts.get(id)).filter((c) => !!c);
   const paused = ctx.status === 'paused';
   let say = ctx.status === 'active' || paused ? statusSentence(reported, open, missed, l1.map((c) => c.name)) : spoken.inactive;
+  if (mine.length && (ctx.status === 'active' || paused)) say += ` ${ownStatusSentence(mine)}`;
   if (paused) say += ` ${inactiveSay(ctx)}`;
-  return { date: today, reported, open, sharedWith: l1.map((c) => `${c.name} (${c.relation})`), paused, say };
+  return { date: today, reported, open, sharedWith: l1.map((c) => `${c.name} (${c.relation})`), paused, mine, say: clip(say, 400) };
 }
 
 // ---- get_family_summary (a linked family member asks how the day went) ----
@@ -432,6 +463,7 @@ const KIND_BY_STATE: Record<OccurrenceState, LoopKind> = {
   ESCALATED_L2: 'alert',
   ACKNOWLEDGED: 'acked',
   PAUSED: 'paused',
+  CANCELLED: 'paused',
 };
 
 /** Check-in labels are written to the person ("your morning routine"); read to family, they name the person. */
@@ -453,17 +485,19 @@ export async function getFamilySummary(store: Store, householdId: HouseholdId): 
   const contacts = new Map(plan.household.contacts.map((c) => [c.id, c.name]));
   const all: Occurrence[] = [];
   for (const def of plan.checkins) {
+    if (!runsOn(def, today)) continue;
     def.windows.forEach((_, idx) => {
       const virtual = newOccurrence(householdId, def, today, idx, tz, now);
-      all.push(stored.get(virtual.id) ?? virtual);
+      const occ = stored.get(virtual.id) ?? virtual;
+      if (stored.has(virtual.id) || new Date(virtual.windowEnd) > new Date(def.createdAt)) all.push(occ);
     });
   }
   all.sort((a, b) => a.windowStart.localeCompare(b.windowStart));
-  const labels = new Map(plan.checkins.map((d) => [d.id, d.label]));
+  const defs = new Map(plan.checkins.map((d) => [d.id, d]));
   const items: FamilySummaryItem[] = all.map((o) => ({
-    label: forFamily(labels.get(o.checkinId) ?? 'a check-in', name),
+    label: forFamily(defs.get(o.checkinId)?.label ?? 'a check-in', name),
     window: `${localTime(new Date(o.windowStart), tz)}–${localTime(new Date(o.windowEnd), tz)}`,
-    recorded: ledgerLine(o, (id) => contacts.get(id)),
+    recorded: ledgerLine(o, (id) => contacts.get(id), { own: isOwnCheckin(defs.get(o.checkinId) ?? ({} as CheckinDefinition)) }),
     kind: KIND_BY_STATE[o.state],
   }));
   const reported = all.filter((o) => o.state === 'REPORTED_DONE').length;

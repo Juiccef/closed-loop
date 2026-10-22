@@ -9,13 +9,19 @@ import {
   acknowledge,
   addDays,
   advanceClock,
+  OUTSIDE_CHECKIN_ID,
+  OUTSIDE_LABEL,
   isValidHHMM,
   ledgerLine,
   lintCheckinText,
   LINK_CODE_MINUTES,
   generateLinkCode,
   hashSecret,
+  isOwnCheckin,
+  liveOwnCheckins,
   loadPlan,
+  runsOn,
+  spokenClock,
   localDate,
   newOccurrence,
   zonedInstant,
@@ -114,6 +120,8 @@ export function createApiHandler(cfg: ApiConfig) {
     const { plan, now, today } = ctx;
     const tz = plan.household.timezone;
     const [allCheckins, consents, alertsToday] = await Promise.all([store.listCheckins(id), store.listConsents(id), store.getAlertCount(id, today)]);
+    const live = new Set(liveOwnCheckins(plan, now).map((d) => d.id));
+    const contactName = (cid: string) => plan.household.contacts.find((c) => c.id === cid)?.name ?? cid;
     return {
       status: ctx.status,
       now: now.toISOString(),
@@ -123,6 +131,20 @@ export function createApiHandler(cfg: ApiConfig) {
       consent: plan.consent ?? null,
       consents,
       checkins: allCheckins,
+      // Check-ins the person set up by voice. Family can see them (and pause everything) but not edit them.
+      ownCheckins: allCheckins
+        .filter((d) => isOwnCheckin(d) && live.has(d.id))
+        .map((d) => ({
+          id: d.id,
+          label: d.label,
+          phrase: d.self!.phrase,
+          byLocal: d.self!.by,
+          bySpoken: spokenClock(d.self!.by),
+          tell: contactName(d.self!.contactId),
+          repeat: d.self!.repeat,
+          setBy: plan.household.recipientName,
+          createdLocal: localDateTime(new Date(d.createdAt), tz),
+        })),
       ladder: plan.ladder,
       alertsToday,
       scopeNotice: SCOPE_NOTICE,
@@ -147,6 +169,7 @@ export function createApiHandler(cfg: ApiConfig) {
     // Today's windows that nothing has touched yet still belong in the ledger, as "not asked yet".
     const have = new Set(occs.map((o) => o.id));
     for (const def of plan.checkins) {
+      if (!runsOn(def, today)) continue;
       def.windows.forEach((_, idx) => {
         const v = newOccurrence(id, def, today, idx, tz, now);
         if (!have.has(v.id) && new Date(v.windowEnd) > new Date(def.createdAt)) occs.push(v);
@@ -157,16 +180,20 @@ export function createApiHandler(cfg: ApiConfig) {
       .sort((a, b) => b.date.localeCompare(a.date) || a.windowStart.localeCompare(b.windowStart))
       .map((o) => {
         const def = defById.get(o.checkinId);
+        const own = !!def && isOwnCheckin(def);
         const last = utterances.filter((u) => u.occurrenceId === o.id).sort((a, b) => b.at.localeCompare(a.at))[0];
         return {
           occurrenceId: o.id,
           date: o.date,
           checkinId: o.checkinId,
-          label: def?.label ?? o.checkinId,
+          label: def?.label ?? (o.checkinId === OUTSIDE_CHECKIN_ID ? OUTSIDE_LABEL : o.checkinId),
+          author: own ? 'person' : 'family',
+          setBy: own ? plan.household.recipientName : null,
+          tell: own ? (contactName(def!.self!.contactId) ?? null) : null,
           window: `${localTime(new Date(o.windowStart), tz)}–${localTime(new Date(o.windowEnd), tz)}`,
           windowOpen: new Date(o.windowStart) <= now && now < new Date(o.windowEnd),
           state: o.state,
-          ledger: ledgerLine(o, contactName),
+          ledger: ledgerLine(o, contactName, { own }),
           askedAt: o.promptedAt ? localTime(new Date(o.promptedAt), tz) : null,
           answeredAt: o.lastResponseAt ? localTime(new Date(o.lastResponseAt), tz) : null,
           followUps: o.reasks,
@@ -273,7 +300,7 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
     const h = await store.getHousehold(payload.householdId);
     if (!occ || !h) return page('Not found', '<p>This check-in no longer exists. The data may have been deleted.</p>');
     const defs = await store.listCheckins(payload.householdId);
-    const label = defs.find((d) => d.id === occ.checkinId)?.label ?? 'a check-in';
+    const label = defs.find((d) => d.id === occ.checkinId)?.label ?? (occ.checkinId === OUTSIDE_CHECKIN_ID ? OUTSIDE_LABEL : 'a check-in');
     const what = `${h.recipientName}: ${label}, ${occ.date}`;
     // GET only shows a button: email link scanners prefetch GET links and must not acknowledge for you.
     if (req.method === 'GET') {
@@ -358,8 +385,13 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
         if (chk) {
           const chkId = chk[1]!;
           if (!ID.test(chkId)) throw new HttpError(400, 'Invalid check-in id.');
+          const existing = (await store.listCheckins(id)).find((c) => c.id === chkId);
+          // The person's own check-ins belong to the person: the console can see them and pause everything, never edit them.
+          if (existing && isOwnCheckin(existing) && (req.method === 'PUT' || req.method === 'DELETE')) {
+            const name = (await store.getHousehold(id))?.recipientName ?? 'The person';
+            throw new HttpError(403, `${name} set this check-in by voice. Only ${name} can change or cancel it. You can still pause all check-ins.`);
+          }
           if (req.method === 'PUT') {
-            const existing = (await store.listCheckins(id)).find((c) => c.id === chkId);
             const def = parseCheckin(await readJson(req), chkId, existing);
             await store.putCheckin(id, def);
             const now = await clockNow(store);

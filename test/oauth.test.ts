@@ -120,6 +120,8 @@ describe('OAuth 2.1 account linking (authorization code + PKCE)', () => {
       ['record_response', { occurrenceId, response: 'done' }],
       ['defer_checkin', { occurrenceId, until: 'in_1_hour' }],
       ['pause_checkins', { scope: 'today' }],
+      ['set_my_checkin', { phrase: 'good night', by: '22:00' }],
+      ['cancel_my_checkin', {}],
     ] as const) {
       const r = (await (await t.mcp(family.access_token, 'tools/call', { name, arguments: args })).json()).result;
       expect(r.isError, name).toBe(true);
@@ -245,6 +247,14 @@ describe('OAuth 2.1 client credentials (service level)', () => {
     expect(call.headers.get('www-authenticate')).toBeNull();
   });
 
+  it('a confidential client may send its credentials in the POST body instead of HTTP Basic', async () => {
+    const t = await setup();
+    const ok = await t.token({ grant_type: 'client_credentials', scope: 'mcp:service', client_id: 'alexa-plus', client_secret: SECRET }, null);
+    expect(ok.status).toBe(200);
+    const bad = await t.token({ grant_type: 'client_credentials', scope: 'mcp:service', client_id: 'alexa-plus', client_secret: 'nope' }, null);
+    expect((await bad.json()).error).toBe('invalid_client');
+  });
+
   it('rejects user scopes, bad secrets, and public clients', async () => {
     const t = await setup();
     expect((await (await t.token({ grant_type: 'client_credentials', scope: 'mcp:tools' })).json()).error).toBe('invalid_scope');
@@ -276,5 +286,8 @@ describe('access token checks on /mcp', () => {
     expect(as.response_types_supported).toEqual(['code']);
     const prm = await (await t.handle(new Request(`${ORIGIN}/.well-known/oauth-protected-resource`))).json();
     expect(prm.resource).toBe(RESOURCE);
+    expect(prm.authorization_servers).toEqual([ORIGIN]);
+    expect(as.issuer).toBe(ORIGIN);
+    expect(as.registration_endpoint).toBeUndefined(); // static client registration: Alexa+ does not use DCR
   });
 });

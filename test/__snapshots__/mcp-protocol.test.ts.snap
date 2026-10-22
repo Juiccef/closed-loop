@@ -99,7 +99,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "openWorldHint": false,
       "readOnlyHint": false,
     },
-    "description": "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. Read back the returned "say" text; if a calmingLine is returned, say it and do not ask further questions.",
+    "description": "Records the person's answer to one check-in. Pick the closest response: done, later, not_yet, no, unsure, or needs_help. If the answer is hedged or unclear, use unsure. Pass the short utterance so the record reflects what was actually said. Read back the returned "say" text exactly; if a calmingLine is returned, do not ask further questions. When the person says the phrase of a check-in they set up themselves (for example "good night"), call this with that check-in's occurrenceId from get_my_status, response done, and their words. If the person sounds upset or asks for help and no check-in is in progress, call this without an occurrenceId, with response needs_help and their words: the family is still told.",
     "execution": {
       "taskSupport": "forbidden",
     },
@@ -107,7 +107,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "$schema": "http://json-schema.org/draft-07/schema#",
       "properties": {
         "occurrenceId": {
-          "description": "The occurrenceId returned by get_due_checkins.",
+          "description": "The check-in being answered. Omit only for needs_help with no check-in in progress.",
           "maxLength": 80,
           "minLength": 1,
           "pattern": "^[A-Za-z0-9#:_-]+$",
@@ -131,7 +131,6 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
         },
       },
       "required": [
-        "occurrenceId",
         "response",
       ],
       "type": "object",
@@ -272,7 +271,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "openWorldHint": false,
       "readOnlyHint": true,
     },
-    "description": "Tells the person, in plain words, how today's check-ins stand and which family contacts receive updates, so they know what is shared.",
+    "description": "Tells the person, in plain words, how today's check-ins stand and which family contacts receive updates, so they know what is shared. Also lists the check-ins the person set up themselves (mine), each with the occurrenceId that saying its phrase now would close.",
     "execution": {
       "taskSupport": "forbidden",
     },
@@ -289,6 +288,56 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
         "date": {
           "maxLength": 10,
           "type": "string",
+        },
+        "mine": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "byLocal": {
+                "maxLength": 5,
+                "type": "string",
+              },
+              "checkinId": {
+                "maxLength": 20,
+                "type": "string",
+              },
+              "occurrenceId": {
+                "maxLength": 80,
+                "type": "string",
+              },
+              "phrase": {
+                "maxLength": 40,
+                "type": "string",
+              },
+              "recorded": {
+                "maxLength": 120,
+                "type": "string",
+              },
+              "repeat": {
+                "enum": [
+                  "tonight",
+                  "daily",
+                ],
+                "type": "string",
+              },
+              "tell": {
+                "maxLength": 40,
+                "type": "string",
+              },
+            },
+            "required": [
+              "checkinId",
+              "phrase",
+              "byLocal",
+              "tell",
+              "repeat",
+              "occurrenceId",
+              "recorded",
+            ],
+            "type": "object",
+          },
+          "maxItems": 6,
+          "type": "array",
         },
         "open": {
           "maximum": 9007199254740991,
@@ -321,6 +370,7 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
         "open",
         "sharedWith",
         "paused",
+        "mine",
         "say",
       ],
       "type": "object",
@@ -484,6 +534,271 @@ exports[`MCP protocol (in-process, real backend) > tools/list is stable (snapsho
       "type": "object",
     },
     "title": "How today's check-ins went (for family)",
+  },
+  {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "For the person, on their own device: sets up a check-in of their own, in their words, for example "If I haven’t said good night by ten, let Dana know." It is never asked; it closes when the person says the phrase before the time. Two calls. First call without confirmToken: returns a spoken preview and a confirmToken, and stores nothing. Read the preview, wait for the person's answer, then call again with only confirmToken and the person's own words as utterance. Never make the second call without asking. The contact must already receive check-in emails. At most three at a time.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "by": {
+          "description": "Local time it must be said by, 24-hour HH:MM, for example "22:00". First call only.",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "type": "string",
+        },
+        "confirmToken": {
+          "description": "From the preview. Second call only, together with utterance.",
+          "maxLength": 600,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "type": "string",
+        },
+        "phrase": {
+          "description": "What the person will say that closes the loop, in their words, for example "good night". First call only.",
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z'\\u2019 ,.!?-]*$",
+          "type": "string",
+        },
+        "repeat": {
+          "description": "tonight (once, the next time that hour comes) or daily. Defaults to tonight. First call only.",
+          "enum": [
+            "tonight",
+            "daily",
+          ],
+          "type": "string",
+        },
+        "tell": {
+          "description": "First name or relation of the contact to email, for example "Dana" or "daughter". Defaults to the first contact. First call only.",
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z'\\u2019 -]*$",
+          "type": "string",
+        },
+        "utterance": {
+          "description": "The person's own words, at most 200 characters. On the second call, their answer to the preview.",
+          "maxLength": 200,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "set_my_checkin",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "calmingLine": {
+          "maxLength": 200,
+          "type": "string",
+        },
+        "checkin": {
+          "additionalProperties": false,
+          "properties": {
+            "byLocal": {
+              "maxLength": 5,
+              "type": "string",
+            },
+            "checkinId": {
+              "maxLength": 20,
+              "type": "string",
+            },
+            "occurrenceId": {
+              "maxLength": 80,
+              "type": "string",
+            },
+            "phrase": {
+              "maxLength": 40,
+              "type": "string",
+            },
+            "recorded": {
+              "maxLength": 120,
+              "type": "string",
+            },
+            "repeat": {
+              "enum": [
+                "tonight",
+                "daily",
+              ],
+              "type": "string",
+            },
+            "tell": {
+              "maxLength": 40,
+              "type": "string",
+            },
+          },
+          "required": [
+            "checkinId",
+            "phrase",
+            "byLocal",
+            "tell",
+            "repeat",
+            "occurrenceId",
+            "recorded",
+          ],
+          "type": "object",
+        },
+        "confirmToken": {
+          "maxLength": 600,
+          "type": "string",
+        },
+        "expiresInSeconds": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "nextStep": {
+          "enum": [
+            "none",
+            "will_ask_again_later",
+            "family_will_be_told",
+            "call_emergency_services",
+          ],
+          "type": "string",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+        "status": {
+          "enum": [
+            "confirm_needed",
+            "set",
+            "not_set",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "status",
+        "nextStep",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Set up my own check-in",
+  },
+  {
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://closed-loop/checkin-card",
+      },
+    },
+    "annotations": {
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "description": "For the person, on their own device: cancels one of the check-ins they set up themselves, for example "cancel my good night check". Pass the phrase, or the checkinId from get_my_status. Nobody is emailed about it afterwards. Always honor it.",
+    "execution": {
+      "taskSupport": "forbidden",
+    },
+    "inputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "checkinId": {
+          "description": "From get_my_status (mine).",
+          "pattern": "^me-[a-f0-9]{10}$",
+          "type": "string",
+        },
+        "phrase": {
+          "description": "The phrase of the check-in, for example "good night".",
+          "maxLength": 40,
+          "minLength": 1,
+          "pattern": "^[A-Za-z][A-Za-z'\\u2019 ,.!?-]*$",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "cancel_my_checkin",
+    "outputSchema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "checkin": {
+          "additionalProperties": false,
+          "properties": {
+            "byLocal": {
+              "maxLength": 5,
+              "type": "string",
+            },
+            "checkinId": {
+              "maxLength": 20,
+              "type": "string",
+            },
+            "occurrenceId": {
+              "maxLength": 80,
+              "type": "string",
+            },
+            "phrase": {
+              "maxLength": 40,
+              "type": "string",
+            },
+            "recorded": {
+              "maxLength": 120,
+              "type": "string",
+            },
+            "repeat": {
+              "enum": [
+                "tonight",
+                "daily",
+              ],
+              "type": "string",
+            },
+            "tell": {
+              "maxLength": 40,
+              "type": "string",
+            },
+          },
+          "required": [
+            "checkinId",
+            "phrase",
+            "byLocal",
+            "tell",
+            "repeat",
+            "occurrenceId",
+            "recorded",
+          ],
+          "type": "object",
+        },
+        "remaining": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer",
+        },
+        "say": {
+          "maxLength": 400,
+          "type": "string",
+        },
+        "status": {
+          "enum": [
+            "cancelled",
+            "not_cancelled",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "status",
+        "remaining",
+        "say",
+      ],
+      "type": "object",
+    },
+    "title": "Cancel my own check-in",
   },
 ]
 `;

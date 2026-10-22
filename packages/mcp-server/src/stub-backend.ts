@@ -19,7 +19,7 @@ export const stubBackend: CheckinBackend = {
   },
   async recordResponse(_ctx, input) {
     return {
-      occurrenceId: input.occurrenceId,
+      occurrenceId: input.occurrenceId ?? 'OCC#2026-10-19#OUTSIDE#0',
       recordedAs: 'not_sure',
       recordedWording: 'said they would, not sure',
       nextStep: 'will_ask_again_later',
@@ -36,6 +36,7 @@ export const stubBackend: CheckinBackend = {
       open: 1,
       sharedWith: ['Dana (daughter)'],
       paused: false,
+      mine: [],
       say: 'Today: none reported yet, 1 still open. Dana gets a note if a check-in stays open.',
     };
   },
@@ -52,5 +53,14 @@ export const stubBackend: CheckinBackend = {
       needsHumanContact: 0,
       say: "Here is what Margaret's check-ins recorded today. Margaret's morning routine: asked, no answer yet. These are Margaret's own answers, recorded as said.",
     };
+  },
+  async setMyCheckin(_ctx, input) {
+    const checkin = { checkinId: '', phrase: input.phrase ?? 'good night', byLocal: input.by ?? '22:00', tell: 'Dana', repeat: input.repeat ?? ('tonight' as const), occurrenceId: '', recorded: '' };
+    return input.confirmToken
+      ? { status: 'set' as const, checkin: { ...checkin, checkinId: 'me-0123456789', occurrenceId: 'OCC#2026-10-19#me-0123456789#0', recorded: 'not said yet' }, nextStep: 'none' as const, say: "Okay, it's set. Say good night any time before 10 pm tonight. If I don't hear it, I'll email Dana." }
+      : { status: 'confirm_needed' as const, checkin, confirmToken: 'stub.token', expiresInSeconds: 300, nextStep: 'none' as const, say: "If you haven't said good night by 10 pm tonight, I'll email Dana. Should I set that up?" };
+  },
+  async cancelMyCheckin() {
+    return { status: 'not_cancelled' as const, remaining: 0, say: "You haven't set up any check-ins of your own." };
   },
 };

@@ -84,7 +84,31 @@ check('no re-quiz right after distress', (await tool('get_due_checkins')).checki
 const crisis = await tool('record_response', { occurrenceId: today.occurrenceId, response: 'done', utterance: "I fell and I can't get up" });
 check('crisis wording gets the fixed 911 line', crisis.say === 'If this is an emergency, please call 911 now.');
 
-// Honesty sweep
+// Honesty sweep (beats 1-4)
+const beats = JSON.stringify(await ledger());
+check('nothing in the ledger says "confirmed" or "taken"', !/\b(confirmed|taken)\b/i.test(beats));
+
+// Beat 5, on a fresh day (so the daily email cap is clear): a check-in Margaret sets up herself, by voice.
+// Two calls; it is never asked; it closes when she says the phrase, or Dana is told in Margaret's name.
+await api('/admin/demo-start', {});
+await advance(600); // 08:05
+const morning2 = (await tool('get_due_checkins')).checkins[0];
+await tool('record_response', { occurrenceId: morning2.occurrenceId, response: 'done', utterance: 'Yes, done.' });
+const preview = await tool('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana', utterance: "If I haven't said good night by ten, let Dana know." });
+check('setting one up starts with a spoken preview, nothing stored', preview.status === 'confirm_needed' && /Should I set that up\?$/.test(preview.say), preview.say);
+const unconfirmed = await tool('set_my_checkin', { confirmToken: preview.confirmToken, utterance: 'I guess' });
+check('a hedged answer to the preview sets nothing', unconfirmed.status === 'not_set');
+const preview2 = await tool('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana' });
+const own = await tool('set_my_checkin', { confirmToken: preview2.confirmToken, utterance: 'Yes, please.' });
+check('the person’s yes sets it', own.status === 'set' && own.checkin?.tell === 'Dana', own.say);
+check('the ledger shows it as set by Margaret', (await item(own.checkin.checkinId))?.setBy === 'Margaret');
+check('it is never asked', !(await tool('get_due_checkins')).checkins.some((c: any) => c.occurrenceId === own.checkin.occurrenceId));
+await advance(14 * 3600); // 22:05: the deadline passed with no "good night"
+const missedOwn = await item(own.checkin.checkinId);
+check('no good night by 10 pm: "no response (not reached)", Dana emailed', /^no response \(not reached\)/.test(missedOwn?.ledger ?? '') && ['sent', 'sending', 'failed'].includes(missedOwn?.alertStatus), `${missedOwn?.ledger} / ${missedOwn?.alertStatus}`);
+const late = await tool('record_response', { occurrenceId: own.checkin.occurrenceId, response: 'done', utterance: 'Good night' });
+check('a late good night is recorded as after the window', late.recordedWording === 'reported by the person' && (await item(own.checkin.checkinId))?.ledger === 'reported by the person (after the window closed)');
+
 const all = JSON.stringify(await ledger());
 check('nothing in the ledger says "confirmed" or "taken"', !/\b(confirmed|taken)\b/i.test(all));
 

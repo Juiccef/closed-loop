@@ -65,11 +65,11 @@ const OPEN_REASON_WORDING: Record<OpenReason, string> = {
   declined: 'said no',
 };
 
-/** One line for the caregiver ledger. */
-export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string | undefined): string {
+/** One line for the caregiver ledger. `own`: a check-in the person set up, which is listened for, never asked. */
+export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string | undefined, opts: { own?: boolean } = {}): string {
   switch (occ.state) {
     case 'SCHEDULED':
-      return LEDGER_WORDING.scheduled;
+      return opts.own ? 'not said yet' : LEDGER_WORDING.scheduled;
     case 'PROMPTED':
       return LEDGER_WORDING.asked;
     case 'DEFERRED':
@@ -94,6 +94,8 @@ export function ledgerLine(occ: Occurrence, contactName?: (id: string) => string
     }
     case 'PAUSED':
       return 'paused';
+    case 'CANCELLED':
+      return 'cancelled by the person';
   }
 }
 
@@ -109,6 +111,9 @@ export const spoken = {
   laterNoTime: "Okay, I've noted that you'll do it later.",
   declined: "Okay, I've noted that. I won't ask about it again today.",
   needsHelp: "Okay. I'll ask your family to give you a call.",
+  /** Upset, and no one is set up to be told: nothing that promises a call. */
+  calmNoContact: "It's all right. Take a slow breath. You can call someone you trust.",
+  noCheckin: "There's no check-in to answer right now. You can say \"any check-ins?\" to hear today's.",
   alreadyDone: "That one is already noted as done. Thank you.",
   notFound: "I couldn't find that check-in. It may have already closed.",
   pausedToday: "Okay. Check-ins are paused for the rest of today.",
@@ -185,9 +190,37 @@ export function missedEmail(args: {
   return render(subject, paragraphs, { href: ackUrl, label: 'Acknowledge' });
 }
 
+/**
+ * A check-in the person set up by voice stayed open: sent in the person's name, to the contact they chose.
+ * Uses the person's name throughout, never an assumed pronoun.
+ */
+export function ownMissedEmail(args: {
+  household: Household;
+  def: CheckinDefinition;
+  occ: Occurrence;
+  level: 1 | 2;
+  consecutiveDays: number;
+  ackUrl: string;
+}): EmailContent {
+  const { household: h, def, occ, level, consecutiveDays, ackUrl } = args;
+  const name = h.recipientName;
+  const phrase = def.self?.phrase ?? 'the check-in phrase';
+  const by = spokenTime(new Date(occ.windowEnd), h.timezone);
+  const paragraphs = [
+    `${name} asked Closed Loop to let you know if ${name} hadn't said "${phrase}" by ${by}. ${name} hasn't yet. This is not an emergency alert.`,
+    `${name} set this up by voice${def.self?.repeat === 'daily' ? ', for every day' : ''}. Closed Loop never asks ${name} about it; the loop closes when ${name} says it.`,
+  ];
+  if (level === 2) paragraphs.push(`This is day ${consecutiveDays} in a row that this check-in stayed open without anyone acknowledging it, so you are receiving this as the second contact.`);
+  paragraphs.push('If you have already been in touch, acknowledge this to stop further emails about it.');
+  const subject =
+    level === 2 ? `Second notice: ${name}'s "${phrase}" by ${by} (not an emergency alert)` : `${name} asked us to let you know: no "${phrase}" by ${by} (not an emergency alert)`;
+  return render(subject, paragraphs, { href: ackUrl, label: 'Acknowledge' });
+}
+
 export function needsHumanEmail(args: { household: Household; occ: Occurrence; crisis: boolean; ackUrl: string }): EmailContent {
   const name = args.household.recipientName;
-  const paragraphs = [`${name} seemed confused or upset during a check-in. A call may help.`];
+  const where = args.occ.needsHumanOutside ? 'while talking with the assistant, outside a check-in' : 'during a check-in';
+  const paragraphs = [`${name} seemed confused or upset ${where}. A call may help.`];
   if (args.crisis) {
     paragraphs.push(
       `${name} used words that can mean they need help, and was told to call 911 if it is an emergency. This service cannot tell what happened and does not contact emergency services.`,

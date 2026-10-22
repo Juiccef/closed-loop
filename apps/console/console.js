@@ -93,13 +93,14 @@ function entryHtml(i) {
   const ack = i.canAcknowledge
     ? `<button class="btn small act" type="button" data-ack="${esc(i.occurrenceId)}">I've been in touch<span class="visually-hidden">: acknowledge ${esc(i.label)}, ${esc(i.date)}</span></button>`
     : '';
+  if (i.setBy) facts.splice(1, 0, `Closes when ${i.setBy} says it`, `Tells ${i.tell}`);
   const kind = loopKind(i.state);
   const changed = state.kinds.has(i.occurrenceId) && state.kinds.get(i.occurrenceId) !== kind;
   state.kinds.set(i.occurrenceId, kind);
   return `<li class="entry${changed ? ' changed' : ''}" data-kind="${kind}">
     ${loopGlyph(i.state)}
     <div>
-      <h3>${esc(i.label)}</h3>
+      <h3>${esc(i.label)}${i.setBy ? ` <span class="tag">Set by ${esc(i.setBy)}</span>` : ''}</h3>
       <p class="said">${esc(i.ledger)}</p>
       <ul class="facts">${facts.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
       ${flags.map((f) => `<p class="flag">${esc(f)}</p>`).join('')}
@@ -174,9 +175,24 @@ function checkinHtml(c, isNew = false) {
   </details>`;
 }
 
+/** Check-ins the person set up by voice: listed so the family knows they exist, with no edit or delete. */
+function renderOwn(v) {
+  const name = v.household.recipientName;
+  const own = v.ownCheckins || [];
+  $('#own-block').hidden = !own.length;
+  $('#own-title').textContent = `Set by ${name}, by voice`;
+  $('#own-desc').textContent = `${name} set these up by saying, for example, “If I haven’t said good night by ten, let Dana know.” They are never asked; each one closes when ${name} says the words. Only ${name} can change or cancel them. Pausing check-ins pauses these too.`;
+  $('#own-list').innerHTML = own
+    .map(
+      (c) => `<li>${loopGlyph('SCHEDULED')}<span><span class="sum-title">“${esc(c.phrase)}” by ${esc(c.bySpoken)} <span class="tag">Set by ${esc(c.setBy)}</span></span>
+      <span class="sum-sub">Tells ${esc(c.tell)} if ${esc(name)} hasn’t said it · ${c.repeat === 'daily' ? 'every day' : 'one time'} · set ${esc(c.createdLocal)}</span></span></li>`,
+    )
+    .join('');
+}
+
 function renderCheckins(list) {
   const open = new Set($$('.checkin[open]').map((d) => d.dataset.id));
-  const byTime = [...list].sort((a, b) => (a.windows[0]?.start ?? '').localeCompare(b.windows[0]?.start ?? ''));
+  const byTime = list.filter((c) => c.author !== 'person').sort((a, b) => (a.windows[0]?.start ?? '').localeCompare(b.windows[0]?.start ?? ''));
   $('#checkin-list').innerHTML = byTime.map((c) => checkinHtml(c)).join('');
   $$('.checkin').forEach((d) => {
     if (open.has(d.dataset.id)) d.open = true;
@@ -274,7 +290,7 @@ function wireCheckin(details) {
 
 $('#add-checkin').addEventListener('click', () => {
   const id = `c${Date.now().toString(36)}`;
-  const blank = { id, label: '', prompt: '', calmingLine: state.view?.checkins[0]?.calmingLine ?? '', kind: 'routine', windows: [{ start: '09:00', end: '11:00' }], reaskMinutes: 60, maxReasks: 2, active: true };
+  const blank = { id, label: '', prompt: '', calmingLine: state.view?.checkins.find((c) => c.author !== 'person')?.calmingLine ?? '', kind: 'routine', windows: [{ start: '09:00', end: '11:00' }], reaskMinutes: 60, maxReasks: 2, active: true };
   $('#checkin-list').insertAdjacentHTML('beforeend', checkinHtml(blank, true));
   const d = $$('.checkin').at(-1);
   wireCheckin(d);
@@ -505,6 +521,7 @@ async function load(force = false, contactsToo = false) {
   renderConsent(view);
   renderData(view);
   if (force || !state.editing.size) renderCheckins(view.checkins);
+  renderOwn(view);
   renderLinks().catch(() => {});
   if (!state.contactsRendered || contactsToo) {
     renderContacts(view);

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { CRISIS_REPLY, SELF_HARM_REPLY } from '../packages/core/src';
-import { rulesPlanner } from '../packages/api/src/planner';
+import { CRISIS_REPLY } from '../packages/core/src';
+import { parseOwnCheckin, rulesPlanner } from '../packages/api/src/planner';
 import { bedrockOrRulesPlanner } from '../packages/api/src/planner-bedrock';
+
+/** With no check-in in progress, words that need a person still go to the server, which records them and tells the family. */
+const withoutCheckin = (utterance: string) => ({ name: 'record_response', arguments: { response: 'needs_help', utterance } });
 
 const current = { occurrenceId: 'OCC#2026-10-19#morning#0', label: 'your morning routine', prompt: 'Have you done it?' };
 
@@ -17,9 +20,10 @@ describe('planner: safety runs first', () => {
     expect(p.toolCall?.arguments.response).toBe('needs_help');
   });
 
-  it('emergency words with no check-in at all get the fixed 911 line', () => {
-    expect(rulesPlanner({ userText: 'My chest hurts', current: null }).reply).toBe(CRISIS_REPLY);
-    expect(rulesPlanner({ userText: "I don't want to live anymore" }).reply).toBe(SELF_HARM_REPLY);
+  it('emergency, help, and distress words with no check-in at all still go to record_response (no occurrenceId): the server answers and tells the family', () => {
+    for (const userText of ['My chest hurts', "I don't want to live anymore", 'Help!', "I'm scared. Where is everyone?"]) {
+      expect(rulesPlanner({ userText, current: null }).toolCall, userText).toEqual(withoutCheckin(userText));
+    }
   });
 
   it('the Bedrock path applies the same rule before calling any model', async () => {
@@ -28,7 +32,7 @@ describe('planner: safety runs first', () => {
     try {
       const p = await bedrockOrRulesPlanner({ userText: 'help me, I fell', current: null, tools: [{ name: 'record_response' }] });
       expect(p.planner).toBe('rules');
-      expect(p.reply).toBe(CRISIS_REPLY);
+      expect(p.toolCall).toEqual(withoutCheckin('help me, I fell'));
     } finally {
       if (before === undefined) delete process.env.BEDROCK_MODEL_ID;
       else process.env.BEDROCK_MODEL_ID = before;
@@ -63,5 +67,55 @@ describe('planner: a family member speaking from their own assistant', () => {
     const p = rulesPlanner({ userText: 'Mom fell and she is hurt', speaker: 'family', current, recent: current });
     expect(p.toolCall).toBeNull();
     expect(p.reply).toBe(CRISIS_REPLY);
+  });
+});
+
+describe('planner: check-ins the person sets up by voice', () => {
+  const mine = [{ checkinId: 'me-0123456789', occurrenceId: 'OCC#2026-10-19#me-0123456789#0', phrase: 'good night' }];
+
+  it('reads the phrase, the time, who to tell, and how often', () => {
+    const p = rulesPlanner({ userText: "If I haven't said good night by ten, let Dana know." });
+    expect(p.toolCall).toEqual({
+      name: 'set_my_checkin',
+      arguments: { phrase: 'good night', by: '22:00', tell: 'dana', repeat: 'tonight', utterance: "If I haven't said good night by ten, let Dana know." },
+    });
+    expect(parseOwnCheckin('Let Sam know if I don\u2019t say good morning by 9 every day')).toEqual({ phrase: 'good morning', by: '09:00', tell: 'sam', repeat: 'daily' });
+    expect(parseOwnCheckin("If I haven't said good night by 10:30 pm, tell my daughter")).toMatchObject({ by: '22:30', tell: 'daughter' });
+    expect(parseOwnCheckin("Tell Dana if I'm not back by four")).toMatchObject({ phrase: "I'm back", by: '16:00' });
+    expect(parseOwnCheckin("If I haven't said good night by twelve, tell Dana").by).toBe('00:00');
+  });
+
+  it('the next words after a preview go back to the server with the token; the server decides', () => {
+    for (const userText of ['Yes, please.', 'No', 'I guess']) {
+      expect(rulesPlanner({ userText, pending: { confirmToken: 'a.b' } }).toolCall).toEqual({ name: 'set_my_checkin', arguments: { confirmToken: 'a.b', utterance: userText } });
+    }
+  });
+
+  it('"cancel my good-night check" cancels by phrase; "stop the check-ins" is still a pause', () => {
+    expect(rulesPlanner({ userText: 'Cancel my good-night check' }).toolCall).toEqual({ name: 'cancel_my_checkin', arguments: { phrase: 'good night' } });
+    expect(rulesPlanner({ userText: 'Stop the check-ins' }).toolCall?.name).toBe('pause_checkins');
+  });
+
+  it('"good night" closes the open loop; when the loops are not known yet, it looks them up first', () => {
+    expect(rulesPlanner({ userText: 'Good night', mine }).toolCall).toEqual({
+      name: 'record_response',
+      arguments: { occurrenceId: mine[0]!.occurrenceId, response: 'done', utterance: 'Good night' },
+    });
+    const lookup = rulesPlanner({ userText: 'Good night' });
+    expect(lookup.toolCall?.name).toBe('get_my_status');
+    expect(lookup.replan).toBe(true);
+    expect(rulesPlanner({ userText: 'Good night', mine: [] })).toMatchObject({ toolCall: null, reply: 'Good night.' });
+  });
+
+  it('pausing wins over a greeting, and extra words answer the check-in in progress', () => {
+    expect(rulesPlanner({ userText: 'Stop asking, good night', mine }).toolCall?.name).toBe('pause_checkins');
+    expect(rulesPlanner({ userText: 'Good night! Yes, all done.', mine, current }).toolCall?.arguments.occurrenceId).toBe(current.occurrenceId);
+  });
+
+  it('a crisis said while setting one up, or while answering the preview, gets the 911 line first', () => {
+    const fell = "If I haven't said good night by ten, tell Dana. I fell and I can't get up.";
+    expect(rulesPlanner({ userText: fell }).toolCall).toEqual(withoutCheckin(fell));
+    const notLive = "Yes. I don't want to live anymore.";
+    expect(rulesPlanner({ userText: notLive, pending: { confirmToken: 'a.b' } }).toolCall).toEqual(withoutCheckin(notLive));
   });
 });

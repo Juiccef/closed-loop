@@ -138,6 +138,16 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Workaround:** Accept HTTP Basic and POST-body credentials (and PKCE-only public clients); treat every tool call as user-level and answer service tokens with the documented 401 body.
 - **Suggestion:** One consolidated OAuth checklist with a complete example of each request, including how the client authenticates.
 
+## 14. Unclear whether a bare phrase like "good night" ever reaches an add-on
+
+- **Task:** Let the person set up their own check-in by voice ("If I haven't said good night by ten, let Dana know"), closed when the person says "good night", so the add-on never has to speak first (works around entry 4).
+- **Steps:** Re-read what the add-on pages say about how a request reaches an add-on (entry 4's sources).
+- **Expected:** A rule for when Alexa+ routes an utterance to an add-on, and whether an add-on can register phrases it should hear (for example "good night", which Alexa+ may answer itself or hand to a household routine).
+- **Actual:** Only "proactive or conversational discovery": Alexa+ chooses to use an add-on during a conversation the person started. Nothing says whether a short phrase with no request in it is offered to an add-on, or how an add-on could ask for it. Unverified either way; add-on tooling is partner-only (entry 6).
+- **Severity:** Medium: the feature works whenever the phrase reaches the add-on (for example "tell Closed Loop good night"), but the most natural form may not.
+- **Workaround:** The simulator sends what the person types to the add-on, and the docs say this is unverified. The phrase is the person's own choice, so it can be one that names the add-on. A late phrase is still recorded honestly as after the window.
+- **Suggestion:** Document utterance routing to add-ons, and let an add-on declare a few consent-gated phrases it wants to hear (the listening side of the proactive primitive in entry 4).
+
 ---
 
 ## Unknowns (BRIEF section 20): status
@@ -151,6 +161,7 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 | User identity header/claim | Alexa+ sends the access token your server issued (Bearer header); identity is whatever your token encodes. We encode the household in `sub` and check `aud` = `/mcp` | Account Linking page; implemented in `packages/mcp-server/src/oauth.ts` |
 | Routines invoke an add-on | Not documented | Entry 4 |
 | Tool creates native reminder | Not documented | Entry 4 |
+| A bare phrase ("good night") is offered to an add-on | Not documented | Entry 14 |
 | `_meta.ui` / MCP Apps | Alexa+ shows `_meta.ui` (`resourceUri`, `invoking`, `invoked`) in the **tool result**; the MCP Apps spec (SEP-1865) puts `_meta.ui.resourceUri` on the **tool definition**. We set both. | Verified: SDK 1.32.1 `registerTool` accepts `_meta`, `registerResource` serves `text/html;profile=mcp-app`, and `initialize` accepts `capabilities.extensions['io.modelcontextprotocol/ui']`. Rendering in real Alexa+: untested (partner-only) |
 | Elicitation | Alexa+ uses MCP elicitation when it cannot fill missing details itself | Lifecycle page. We still do not use server-initiated elicitation |
 | Bedrock model IDs | Listed ACTIVE in us-east-1: `us.amazon.nova-micro-v1:0`, `us.amazon.nova-lite-v1:0`, `us.anthropic.claude-haiku-5-5` (inference profiles) | `list-inference-profiles`. Invocation blocked: daily token quota 0 / not available for account (entry 7). Prices: to check |

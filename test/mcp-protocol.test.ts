@@ -83,6 +83,37 @@ describe('MCP protocol (in-process, real backend)', () => {
     expect(done.structuredContent.recordedWording).toBe('reported by the person');
   });
 
+  it('set_my_checkin is two calls: a preview with a token, then the token and the person’s yes', async () => {
+    const { call, store } = await setup();
+    setLocal('2026-10-19 20:00');
+    const preview = await call('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana', utterance: "If I haven't said good night by ten, let Dana know." });
+    expect(preview.structuredContent).toMatchObject({ status: 'confirm_needed', expiresInSeconds: 300, nextStep: 'none' });
+    expect(preview.content[0].text).toBe(preview.structuredContent.say);
+    expect((await store.listCheckins(H)).some((d) => d.author === 'person')).toBe(false);
+
+    // A model cannot create one in a single call, even by inventing a token.
+    const forged = await call('set_my_checkin', { phrase: 'good night', by: '22:00', confirmToken: 'abc.def', utterance: 'Yes' });
+    expect(forged.structuredContent.status).toBe('not_set');
+    const noAnswer = await call('set_my_checkin', { confirmToken: preview.structuredContent.confirmToken });
+    expect(noAnswer.isError).toBe(true);
+
+    const set = await call('set_my_checkin', { confirmToken: preview.structuredContent.confirmToken, utterance: 'Yes, please.' });
+    expect(set.structuredContent).toMatchObject({ status: 'set', checkin: { phrase: 'good night', byLocal: '22:00', tell: 'Dana', repeat: 'tonight' } });
+    expect(set._meta.ui).toEqual({ resourceUri: 'ui://closed-loop/checkin-card', invoking: 'Setting up your check-in', invoked: 'Your check-in' });
+
+    setLocal('2026-10-19 21:30');
+    const status = await call('get_my_status');
+    const [mine] = status.structuredContent.mine;
+    expect(mine).toMatchObject({ phrase: 'good night', recorded: 'not said yet', occurrenceId: set.structuredContent.checkin.occurrenceId });
+    const closed = await call('record_response', { occurrenceId: mine.occurrenceId, response: 'done', utterance: 'Good night' });
+    expect(closed.structuredContent.recordedWording).toBe('reported by the person');
+
+    const cancelled = await call('cancel_my_checkin', { phrase: 'good night' });
+    expect(cancelled.structuredContent).toMatchObject({ status: 'cancelled', remaining: 0 });
+    expect((await call('set_my_checkin', { phrase: 'good night', by: '25:00' })).isError).toBe(true);
+    expect((await call('set_my_checkin', { phrase: 'take 10mg', by: '09:00' })).isError).toBe(true);
+  });
+
   it('MCP App card: listed and readable as text/html;profile=mcp-app, referenced by tools and results', async () => {
     const { rpc, call } = await setup();
     const init = await rpc('initialize', {
@@ -103,6 +134,50 @@ describe('MCP protocol (in-process, real backend)', () => {
     setLocal('2026-10-19 08:00');
     const due = await call('get_due_checkins');
     expect(due._meta.ui).toEqual({ resourceUri: 'ui://closed-loop/checkin-card', invoking: 'Checking today\u2019s check-ins', invoked: 'Check-ins ready' });
+  });
+
+  it('every tool answers with structuredContent, the same words as text, and _meta.ui', async () => {
+    const { call } = await setup();
+    setLocal('2026-10-19 08:00');
+    const due = await call('get_due_checkins');
+    const occurrenceId = due.structuredContent.checkins[0].occurrenceId;
+    const results = {
+      get_due_checkins: due,
+      defer_checkin: await call('defer_checkin', { occurrenceId, until: 'in_1_hour' }),
+      record_response: await call('record_response', { occurrenceId, response: 'done', utterance: 'Yes, done.' }),
+      get_my_status: await call('get_my_status'),
+      get_family_summary: await call('get_family_summary'),
+      set_my_checkin: await call('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana', utterance: "If I haven't said good night by ten, let Dana know." }),
+      cancel_my_checkin: await call('cancel_my_checkin', { phrase: 'good night' }),
+      pause_checkins: await call('pause_checkins', { scope: 'today' }),
+    };
+    expect(Object.keys(results)).toHaveLength(8);
+    for (const [name, r] of Object.entries(results)) {
+      expect(r.isError, name).toBeFalsy();
+      expect(r.content, name).toEqual([{ type: 'text', text: r.structuredContent.say }]);
+      expect(r._meta.ui.resourceUri, name).toBe('ui://closed-loop/checkin-card');
+    }
+  });
+
+  it('tool annotations: only the two read-only tools say so, and no tool reaches outside the server', async () => {
+    const { rpc } = await setup();
+    const tools: Array<{ name: string; annotations: { readOnlyHint: boolean; openWorldHint: boolean } }> = (await rpc('tools/list')).body.result.tools;
+    expect(tools).toHaveLength(8);
+    for (const t of tools) expect(t.annotations.openWorldHint, t.name).toBe(false);
+    expect(tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name)).toEqual(['get_my_status', 'get_family_summary']);
+  });
+
+  it('GET /mcp is 405 (no SSE stream); a POST with no Accept header still gets a JSON answer', async () => {
+    const { handle } = await setup();
+    const get = await handle(new Request('http://localhost/mcp', { method: 'GET', headers: { authorization: `Bearer ${TOKEN}`, accept: 'text/event-stream' } }));
+    expect(get.status).toBe(405);
+    const init = { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'no-accept', version: '1' } } };
+    const res = await handle(
+      new Request('http://localhost/mcp', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TOKEN}` }, body: JSON.stringify(init) }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('application/json');
+    expect((await res.json()).result.protocolVersion).toBe('2025-03-26');
   });
 
   it('unknown occurrence is a tool error (isError), not a protocol error', async () => {

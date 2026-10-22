@@ -4,9 +4,9 @@
 import { addDays, datesBetween, inLocalRange, localDate, localTime, minutesBetween } from './clock';
 import { mutateOccurrence } from './checkins';
 import type { CheckinDefinition, Contact, HouseholdId, Occurrence, OccurrenceState, OpenReason } from './model';
-import { loadPlan, materialize, type Plan } from './plan';
+import { isOwnCheckin, loadPlan, materialize, type Plan } from './plan';
 import type { Store } from './store';
-import { ledgerLine, missedEmail, needsHumanEmail, type EmailContent } from './wording';
+import { ledgerLine, missedEmail, needsHumanEmail, ownMissedEmail, type EmailContent } from './wording';
 
 export interface OutgoingEmail extends EmailContent {
   to: string;
@@ -165,7 +165,7 @@ async function closeOccurrence(
   const paused = pausedDuring(plan, occ);
   const days = consecutiveOpenDays(occ, history);
   const level: 1 | 2 = days >= ladder.l2AfterMissedDays && ladder.l2ContactIds.length > 0 ? 2 : 1;
-  const hasRecipients = ladder.l1ContactIds.length > 0 || (level === 2 && ladder.l2ContactIds.length > 0);
+  const hasRecipients = def ? recipientsFor(plan, def, level).length > 0 : false;
 
   const written = await mutateOccurrence(
     store,
@@ -207,6 +207,13 @@ function contactsFor(plan: Plan, ids: string[]): Contact[] {
   return ids.map((id) => byId.get(id)).filter((c): c is Contact => !!c);
 }
 
+/** The person's own check-ins tell the contact they chose; family check-ins tell the ladder's first contacts. L2 adds the second contacts. */
+function recipientsFor(plan: Plan, def: CheckinDefinition, level: 1 | 2): Contact[] {
+  const first = contactsFor(plan, isOwnCheckin(def) ? [def.self!.contactId] : plan.ladder.l1ContactIds);
+  if (level !== 2) return first;
+  return [...first, ...contactsFor(plan, plan.ladder.l2ContactIds).filter((c) => !first.some((x) => x.id === c.id))];
+}
+
 async function deliverAlert(
   store: Store,
   plan: Plan,
@@ -242,14 +249,14 @@ async function deliverAlert(
   }
 
   const level = claimed.escalationLevel === 2 ? 2 : 1;
-  const l1 = contactsFor(plan, plan.ladder.l1ContactIds);
-  const recipients = level === 2 ? [...l1, ...contactsFor(plan, plan.ladder.l2ContactIds).filter((c) => !l1.some((x) => x.id === c.id))] : l1;
+  const recipients = recipientsFor(plan, def, level);
   const history = level === 2 ? await store.listOccurrences(id, addDays(occ.date, -14), occ.date) : [];
   const days = level === 2 ? consecutiveOpenDays(claimed, history) : 1;
 
   const sentTo: string[] = [];
   for (const c of recipients) {
-    const content = missedEmail({ household: plan.household, def, occ: claimed, level, consecutiveDays: days, ackUrl: opts.ackUrl(id, occ.id, c.id) });
+    const args = { household: plan.household, def, occ: claimed, level, consecutiveDays: days, ackUrl: opts.ackUrl(id, occ.id, c.id) } as const;
+    const content = isOwnCheckin(def) ? ownMissedEmail(args) : missedEmail(args);
     try {
       const email: OutgoingEmail = { ...content, to: c.email, toName: c.name, householdId: id, occurrenceId: occ.id, kind: level === 2 ? 'missed_l2' : 'missed_l1' };
       const { messageId } = await opts.mailer.send(email);

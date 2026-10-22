@@ -57,6 +57,16 @@ export async function loadPlan(store: Store, householdId: HouseholdId): Promise<
   return { now, today, plan, status: planStatus(plan, now) };
 }
 
+/** True for check-ins the person set up by voice. They are never asked; they close when the person says the phrase. */
+export function isOwnCheckin(def: CheckinDefinition): boolean {
+  return def.author === 'person' && !!def.self;
+}
+
+/** A `tonight` check-in covers one date only; everything else runs every day. */
+export function runsOn(def: CheckinDefinition, date: string): boolean {
+  return !def.self?.date || def.self.date === date;
+}
+
 export function windowInstants(date: string, start: string, end: string, tz: string): { start: Date; end: Date } {
   const s = zonedInstant(date, start, tz);
   // A window that ends at or before it starts runs past midnight.
@@ -95,6 +105,7 @@ export async function materialize(store: Store, plan: Plan, date: string, now: D
   const byId = new Map(have.map((o) => [o.id, o]));
   const created: Occurrence[] = [];
   for (const def of plan.checkins) {
+    if (!runsOn(def, date)) continue;
     def.windows.forEach((_, idx) => {
       const id = occurrenceId(date, def.id, idx);
       if (byId.has(id)) return;

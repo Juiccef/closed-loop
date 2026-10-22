@@ -11,6 +11,7 @@ import {
   pauseCheckins,
   recordResponse,
   setRealTimeSource,
+  spoken,
   verifyAck,
 } from '../packages/core/src';
 import { H, demo, setLocal } from './helpers';
@@ -163,6 +164,85 @@ describe('recording: honest wording and the safety layer', () => {
     setLocal('2026-10-19 08:05');
     await expect(recordResponse(store, H, { occurrenceId: 'OCC#2026-10-19#nope#0', response: 'done' })).rejects.toThrow(/couldn't find/);
     await expect(recordResponse(store, H, { occurrenceId: 'garbage', response: 'done' })).rejects.toThrow(/couldn't find/);
+  });
+});
+
+describe('upset with no check-in in progress: the family is still told, and the reply says only what happened', () => {
+  const CALM = "You're safe at home, Margaret. Dana will give you a call this evening.";
+  const notes = <T extends { kind: string }>(sent: T[]) => sent.filter((m) => m.kind === 'needs_human');
+
+  it('before any check-in has started: a record of its own, exactly one family note, and the morning check-in is still asked later', async () => {
+    const { store, mailer, tick } = await demo();
+    setLocal('2026-10-19 07:30');
+    const r = await recordResponse(store, H, { response: 'needs_help', utterance: "I'm scared. Where is everyone?" });
+    expect(r).toMatchObject({ occurrenceId: 'OCC#2026-10-19#OUTSIDE#0', recordedWording: 'needs human contact', nextStep: 'family_will_be_told', say: CALM });
+
+    // Said again before anyone called: the same record, still one note.
+    setLocal('2026-10-19 07:40');
+    expect((await recordResponse(store, H, { response: 'unsure', utterance: 'I want to go home.' })).say).toBe(CALM);
+    await tick();
+    setLocal('2026-10-19 07:45');
+    expect((await recordResponse(store, H, { response: 'needs_help', utterance: 'Who are you?' })).say).toBe(CALM);
+    await tick();
+    expect(notes(mailer.sent)).toHaveLength(1);
+    expect(notes(mailer.sent)[0]).toMatchObject({ to: 'dana@example.com' });
+    expect(notes(mailer.sent)[0]!.text).toContain('Margaret seemed confused or upset while talking with the assistant, outside a check-in. A call may help.');
+
+    const events = await store.listEvents(H, 50);
+    expect(events.some((e) => e.type === 'distress_branch' && e.detail.startsWith('Outside a check-in. Calming line given'))).toBe(true);
+    expect((await getFamilySummary(store, H)).say).toContain('Outside a check-in: needs human contact.');
+
+    // The family's check-ins are untouched: quiet for an hour, then the morning one is asked as usual.
+    setLocal('2026-10-19 08:05');
+    expect((await getDueCheckins(store, H)).checkins).toEqual([]);
+    setLocal('2026-10-19 08:46');
+    expect((await getDueCheckins(store, H)).checkins.map((c) => c.occurrenceId)).toEqual([MORNING]);
+  });
+
+  it('during an open check-in, after the conversation about it ended: noted on it, one note, and the email says it was outside a check-in', async () => {
+    const { store, mailer, tick } = await demo();
+    setLocal('2026-10-19 09:00');
+    await getDueCheckins(store, H);
+    setLocal('2026-10-19 09:20');
+    const r = await recordResponse(store, H, { response: 'needs_help', utterance: 'Help!' });
+    expect(r).toMatchObject({ occurrenceId: MORNING, nextStep: 'family_will_be_told', say: `${CALM} ${CRISIS_REPLY}` });
+    expect((await store.getOccurrence(H, MORNING))?.state).toBe('NEEDS_HUMAN');
+    const events = await store.listEvents(H, 50);
+    expect(events.some((e) => e.detail.startsWith('Outside a check-in, noted on your morning routine. Asked for help'))).toBe(true);
+    await tick();
+    expect(notes(mailer.sent)).toHaveLength(1);
+    expect(notes(mailer.sent)[0]!.text).toContain('outside a check-in');
+  });
+
+  it('never rewrites a check-in the person already reported done', async () => {
+    const { store, mailer, tick } = await demo();
+    setLocal('2026-10-19 08:05');
+    await getDueCheckins(store, H);
+    await recordResponse(store, H, { occurrenceId: MORNING, response: 'done', utterance: 'Yes, all done.' });
+    setLocal('2026-10-19 10:00');
+    const r = await recordResponse(store, H, { response: 'needs_help', utterance: "I fell and I can't get up." });
+    expect(r).toMatchObject({ occurrenceId: 'OCC#2026-10-19#OUTSIDE#0', nextStep: 'call_emergency_services', say: CRISIS_REPLY });
+    expect((await store.getOccurrence(H, MORNING))?.state).toBe('REPORTED_DONE');
+    await tick();
+    expect(notes(mailer.sent)).toHaveLength(1);
+  });
+
+  it('with no one set up to be told, the reply promises no call and no email goes out', async () => {
+    const { store, mailer, tick } = await demo();
+    await store.putLadder(H, { ...(await store.getLadder(H)), l1ContactIds: [], l2ContactIds: [] });
+    setLocal('2026-10-19 07:30');
+    const r = await recordResponse(store, H, { response: 'needs_help', utterance: "I'm scared." });
+    expect(r).toMatchObject({ nextStep: 'none', say: spoken.calmNoContact });
+    expect(r.say).not.toMatch(/call you|give you a call|will call/i);
+    expect(r.calmingLine).toBeUndefined();
+    await tick();
+    expect(notes(mailer.sent)).toHaveLength(0);
+  });
+
+  it('only words that need a person can be recorded without a check-in', async () => {
+    const { store } = await demo();
+    setLocal('2026-10-19 07:30');
+    await expect(recordResponse(store, H, { response: 'done', utterance: 'Yes, all done.' })).rejects.toThrow(/no check-in to answer/);
   });
 });
 

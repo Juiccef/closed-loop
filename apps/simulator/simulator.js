@@ -3,7 +3,9 @@
 
 import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph } from '/shared/app.js';
 
-const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana' };
+// pending: a set_my_checkin preview waiting for the person's answer (one turn only).
+// mine: the person's own check-ins as MCP last returned them (undefined until looked up).
+const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana', pending: null, mine: undefined };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -53,8 +55,16 @@ function resultCard(sc, name) {
     return `<div class="card">${loopGlyph('DEFERRED')}<span>Recorded: <strong>said later</strong> <span class="next">· ask again at ${esc(sc.deferredUntilLocal)}</span></span></div>`;
   }
   if (name === 'pause_checkins') return `<div class="card">${loopGlyph('PAUSED')}<span><strong>Paused</strong> <span class="next">until ${esc(sc.pausedUntilLocal)}</span></span></div>`;
+  if (name === 'set_my_checkin' && sc.checkin && sc.status !== 'not_set') {
+    const c = sc.checkin;
+    return `<div class="card">${loopGlyph(sc.status === 'set' ? 'PROMPTED' : 'DEFERRED')}<span><strong>${sc.status === 'set' ? 'Set by you' : 'Not set yet'}</strong>: tell ${esc(c.tell)} if there is no “${esc(c.phrase)}” by ${esc(c.byLocal)}</span></div>`;
+  }
+  if (name === 'cancel_my_checkin' && sc.status === 'cancelled') return `<div class="card">${loopGlyph('CANCELLED')}<span><strong>Cancelled</strong> <span class="next">“${esc(sc.checkin?.phrase)}”</span></span></div>`;
   return '';
 }
+
+/** What the planner needs to know about the person's own check-ins. */
+const mineFrom = (list) => (list || []).map((m) => ({ checkinId: m.checkinId, occurrenceId: m.occurrenceId, phrase: m.phrase }));
 
 // ---- MCP App cards (SEP-1865) ----
 // The card is the server's ui:// resource, rendered in a sandboxed iframe (opaque origin, restrictive CSP).
@@ -213,12 +223,7 @@ async function familyAsks(t) {
   say(r.structuredContent.say, mountCard(plan.toolCall.name, plan.toolCall.arguments, r) || '');
 }
 
-async function personSays(text) {
-  const t = text.trim().slice(0, 200);
-  if (!t) return;
-  if (state.speaker === 'family') return familyAsks(t);
-  caption('person', t);
-  orb('thinking', `Planner (${state.plannerKind}) choosing a tool`);
+async function plannerFor(t) {
   const started = performance.now();
   const plan = await api('/planner', {
     method: 'POST',
@@ -227,6 +232,8 @@ async function personSays(text) {
       current: state.current && { occurrenceId: state.current.occurrenceId, label: state.current.label, prompt: state.current.prompt },
       recent: state.recent,
       tools: state.mcp.tools,
+      pending: state.pending,
+      ...(state.mine ? { mine: state.mine } : {}),
     },
   });
   traffic({
@@ -237,6 +244,24 @@ async function personSays(text) {
     line: plan.rationale,
     body: plan,
   });
+  return plan;
+}
+
+async function personSays(text) {
+  const t = text.trim().slice(0, 200);
+  if (!t) return;
+  if (state.speaker === 'family') return familyAsks(t);
+  caption('person', t);
+  orb('thinking', `Planner (${state.plannerKind}) choosing a tool`);
+  let plan = await plannerFor(t);
+  if (plan.replan && plan.toolCall) {
+    // A lookup first (as a model would chain tools): learn the person's own check-ins, then plan again.
+    const look = await callTool(plan.toolCall.name, plan.toolCall.arguments);
+    if (look.isError) return say(look.content?.[0]?.text || 'Sorry, something went wrong.');
+    state.mine = mineFrom(look.structuredContent?.mine);
+    plan = await plannerFor(t);
+  }
+  state.pending = null; // a preview waits for one answer only
   if (!plan.toolCall) return say(plan.reply);
 
   const { name, arguments: args } = plan.toolCall;
@@ -245,6 +270,23 @@ async function personSays(text) {
   const sc = r.structuredContent;
   if (name === 'get_due_checkins') return handleDue(sc, r);
   say(sc.say, mountCard(name, args, r) || resultCard(sc, name));
+
+  if (name === 'set_my_checkin') {
+    if (sc.status === 'confirm_needed') state.pending = { confirmToken: sc.confirmToken };
+    if (sc.status === 'set' && state.mine) state.mine = [...state.mine.filter((m) => m.phrase !== sc.checkin.phrase), ...mineFrom([sc.checkin])];
+    if (sc.nextStep === 'call_emergency_services') {
+      state.queue = [];
+      state.current = null;
+    }
+    return;
+  }
+  if (name === 'cancel_my_checkin') {
+    state.mine = undefined;
+    return;
+  }
+  if (name === 'get_my_status') state.mine = mineFrom(sc.mine);
+  // Closing one of the person's own check-ins: the question in progress (if any) is not asked again this turn.
+  if (name === 'record_response' && !state.queue.some((c) => c.occurrenceId === args.occurrenceId) && sc.recordedAs !== 'needs_human_contact' && sc.nextStep !== 'call_emergency_services') return;
 
   if (name === 'record_response' || name === 'defer_checkin') {
     // Distress or crisis: no further questions in this conversation.
@@ -298,6 +340,8 @@ async function moveClock(body, label) {
     state.queue = [];
     state.current = null;
     state.recent = null;
+    state.pending = null;
+    state.mine = undefined; // occurrences move on with the clock; look them up again when needed
     await loadClock();
     $('#clock-time').classList.remove('flash');
     void $('#clock-time').offsetWidth;
@@ -321,7 +365,7 @@ async function refresh() {
       .map((i) => {
         const changed = state.loops.has(i.occurrenceId) && state.loops.get(i.occurrenceId) !== i.ledger;
         state.loops.set(i.occurrenceId, i.ledger);
-        const detail = [i.askedAt && `asked ${i.askedAt}`, i.answeredAt && `answered ${i.answeredAt}`, i.deferredUntil && `ask again ${i.deferredUntil}`].filter(Boolean).join(' · ');
+        const detail = [i.setBy && `set by ${i.setBy} · tells ${i.tell}`, i.askedAt && `asked ${i.askedAt}`, i.answeredAt && `answered ${i.answeredAt}`, i.deferredUntil && `ask again ${i.deferredUntil}`].filter(Boolean).join(' · ');
         return `<li class="${changed ? 'changed' : ''}">${loopGlyph(i.state)}<span class="label">${esc(i.label)}<span class="window">${esc(i.window)}</span></span><span class="status">${esc(i.ledger)}${detail ? ` <span class="window">${esc(detail)}</span>` : ''}</span></li>`;
       })
       .join('');
@@ -526,6 +570,8 @@ $('#demo-start').addEventListener(
     traffic({ kind: 'tick', tag: 'demo', title: 'fresh demo day', meta: r.localNow, body: r });
     state.queue = [];
     state.current = null;
+    state.pending = null;
+    state.mine = undefined;
     state.loops.clear();
     $('#captions').innerHTML = '';
     caption('system', 'New demo day. The plan, consent, and ledger were reset.');

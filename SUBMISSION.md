@@ -37,6 +37,7 @@ Closed Loop is a self-hosted MCP server for an Alexa+ add-on, plus a caregiver c
 - **Follows up** at the time the person chose, or after the caregiver's interval, a capped number of times, never twice in one turn.
 - **Tells a human, without crying wolf.** When a window closes with no answer, Amazon SES sends a plain email ("We did not hear back about your morning routine today. This is not an emergency alert.") with a signed acknowledge link. Nobody acknowledges for a second day, the second contact is told. A daily cap and quiet hours keep it calm.
 - **Lets family ask from their own Alexa.** "How is Mom doing today?" reads back the day exactly as recorded ("needs human contact; a call may help"). A family member's linked account can read the day but can never answer, defer, or pause a check-in for the person: the server refuses it.
+- **Lets the person write part of their own safety net, by voice.** Margaret says "If I haven't said good night by ten, let Dana know." The assistant reads it back and nothing is set until Margaret says yes (two MCP calls with a signed, five-minute token, so a model cannot create one in a single unconfirmed call). It is never asked: the loop closes when Margaret says "good night" before 10 pm, so it needs no proactive prompt. Otherwise Dana gets an email in Margaret's name: "Margaret asked Closed Loop to let you know if Margaret hadn't said "good night" by 10 pm. Margaret hasn't yet. This is not an emergency alert." Family see it in the console as *Set by Margaret* and can pause everything, but cannot create, edit, or cancel it.
 - **Handles distress carefully:** confusion gets the family's own calming line and no more questions, plus a neutral note to family; emergency wording gets one fixed line, "If this is an emergency, please call 911 now" (and 988 for self-harm wording).
 - **Puts the family in charge, with consent:** check-ins in their own words (linted so no drug names or doses are read aloud), who gets emailed, quiet hours, plan expiry, recorded consent that stops everything when revoked, and delete-all-data.
 - **Shows results as MCP App cards** (`ui://` resource, SEP-1865) using Alexa+'s documented `_meta.ui` placement.
@@ -51,23 +52,24 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 |---|---|---|
 | An agentic workflow that orchestrates across services autonomously | Every minute EventBridge Scheduler runs a tick that closes windows in DynamoDB, emails family through SES, escalates to a second contact on day two, and stops when someone acknowledges. No human in the loop until a human is needed. | 1:33 |
 | A context-aware add-on that keeps state across sessions | The ledger, follow-ups at the time the person chose, the distress quiet period, and the family's view of the day all persist across sessions. | 0:56, 1:20, 2:13 |
-| Media support (cards) and MCP Apps | One MCP App card renders all six tool results, including the family summary, in a sandboxed iframe with the spec's handshake. | 0:56 |
+| Media support (cards) and MCP Apps | One MCP App card renders all eight tool results, including the family summary and the person's own check-in, in a sandboxed iframe with the spec's handshake. | 0:56 |
 | Agent Skills | `skills/closed-loop-checkins/SKILL.md` | 2:38 |
 | Not a single-turn Q&A bot | Answers, deferrals and follow-ups span hours and days; family hear the result later from their own device. | throughout |
+| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent, quiet hours and email cap. | draft scene, not yet in the video |
 
 ### How we built it
 
-- **MCP server:** TypeScript on `@modelcontextprotocol/sdk` 1.32.1, stateless Streamable HTTP via the Web-standard transport. Accepts both `2025-03-26` and `2025-11-25` handshakes, validates Origin, returns 401 without `WWW-Authenticate` (per Alexa+'s auth docs), serves RFC 9728 metadata, and runs its own OAuth 2.1 authorization server built to Alexa+'s account-linking requirements, with a person/family role carried in the authorization code, refresh token and access token. Six tools with enums and bounded strings, `structuredContent` plus text, a tools/list snapshot test.
+- **MCP server:** TypeScript on `@modelcontextprotocol/sdk` 1.32.1, stateless Streamable HTTP via the Web-standard transport. Accepts both `2025-03-26` and `2025-11-25` handshakes, validates Origin, returns 401 without `WWW-Authenticate` (per Alexa+'s auth docs), serves RFC 9728 metadata, and runs its own OAuth 2.1 authorization server built to Alexa+'s account-linking requirements, with a person/family role carried in the authorization code, refresh token and access token. Eight tools with enums and bounded strings, `structuredContent` plus text, a tools/list snapshot test, and a two-call confirm (signed token plus the person's own yes) for the one tool that creates something.
 - **State machine and ladder** in a pure, tested core: conditional writes on a version attribute so overlapping ticks never double-send, an atomic daily alert cap, and honest "open reasons" (not reached vs asked with no answer).
 - **AWS:** Lambda (arm64) behind a Function URL, DynamoDB single table with TTL and Streams, EventBridge Scheduler (minute tick plus keep-warm), SES, Bedrock (Converse with tool use) for the planner and an asynchronous second opinion, all in one SAM template.
 - **Simulated Alexa+ client:** a browser page that is a real MCP client and shows every JSON-RPC message, a planner hop, the MCP App card, a "who is speaking" switch for the person or a family member, and a simulated clock that moves the whole system.
 - **Caregiver console:** Amazon-style app layout with Apple's system type, keyboard-first, status by shape and words, zero axe-core violations on every page in light and dark.
-- **Tests:** 109 unit, protocol, OAuth and planner tests, a 20-utterance fail-closed eval, an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
+- **Tests:** 412 in all. A 265-reply fail-closed eval assumes the planner claims `done` for everything and counts both directions: 0 unsafe misses and 0 false alarms (`docs/evals.md`; its first run found 44 failures, which the rules now fix). Also unit, protocol, OAuth, planner and console API tests, a requirement-to-test map for Alexa+ (`docs/alexa-plus-readiness.md`), an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
 
 ### Challenges we ran into
 
 - Alexa+ docs disagree on the protocol version and differ from the MCP spec on 401 headers; client headers are undocumented, and the SDK 406s JSON-only clients. We accept both versions and normalize `Accept`.
-- No proactive primitive for add-ons, so the design separates "asking" (person-initiated) from "closing the loop" (scheduled).
+- No proactive primitive for add-ons, so the design separates "asking" (person-initiated) from "closing the loop" (scheduled), and the person's own check-ins close when the person speaks first. Whether a bare "good night" reaches an add-on at all is undocumented, so we say so (FRICTION_LOG #14).
 - A brand-new AWS account: Bedrock daily token quota of 0 (not adjustable), Lambda concurrency of 10 (no provisioned concurrency), SES sandbox. Bedrock paths are deployed and pass request validation but fall back to rules today, and the UI says so.
 - Cold starts above Alexa+'s 500 ms budget; mitigated with lazy SDK loading and a keep-warm schedule.
 
@@ -104,6 +106,7 @@ Full per-tool answers (what it was used for, what worked, what needs work, onboa
 | Request | Rating |
 |---|---|
 | A consent-gated proactive primitive for MCP add-ons (scheduled prompt, or creating a native reminder or routine step from a tool) | **Critical** |
+| Let add-ons declare a few consent-gated phrases they want to hear ("good night"), and document utterance routing | Important |
 | A public, rate-limited Alexa+ simulator or conformance test for non-partners | Important |
 | Documented request headers and supported protocol versions for the Alexa+ MCP client | Important |
 | Bedrock: say "your quota is 0" on the first throttling error; show account verification status | Important |
@@ -111,7 +114,7 @@ Full per-tool answers (what it was used for, what worked, what needs work, onboa
 
 ## Friction log (optional bonus)
 
-13 entries in `FRICTION_LOG.md`, each with task, steps, expected vs actual, severity, workaround, and suggestion: protocol version conflict, 401 header guidance, undocumented client headers, no proactive primitive, broken doc index URLs, partner-only tooling, Bedrock zero quota on a new account, Lambda concurrency and cold starts, a CloudFormation cycle between Function URLs, a DynamoDB Streams mapping start-up gap, SAM empty parameters, SES verification resend, and OAuth requirements split across pages.
+14 entries in `FRICTION_LOG.md`, each with task, steps, expected vs actual, severity, workaround, and suggestion: protocol version conflict, 401 header guidance, undocumented client headers, no proactive primitive, broken doc index URLs, partner-only tooling, Bedrock zero quota on a new account, Lambda concurrency and cold starts, a CloudFormation cycle between Function URLs, a DynamoDB Streams mapping start-up gap, SAM empty parameters, SES verification resend, OAuth requirements split across pages, and no documented routing of a bare phrase like "good night" to an add-on.
 
 ## Open Source mini challenge
 

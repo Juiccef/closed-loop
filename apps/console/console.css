@@ -341,6 +341,65 @@
   padding: 0.25rem 1.5rem 1.5rem 4.4rem;
 }
 
+/* ---- Check-ins the person set up by voice: shown, never editable here ---- */
+.tag {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue-press);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: 0.12em;
+}
+.own-block {
+  border-top: 1px solid var(--separator);
+  padding: 1.1rem 1.5rem 0.4rem;
+}
+.own-block h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.own-block .desc {
+  margin: 0.2rem 0 0.4rem;
+  color: var(--text-2);
+  font-size: 0.9375rem;
+  max-width: 46rem;
+}
+.own-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.own-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--separator);
+}
+.own-list li:first-child {
+  border-top: none;
+}
+.own-list .loop {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+}
+.own-list .sum-title {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.own-list .sum-sub {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--text-2);
+}
+
 /* ---- Forms ---- */
 .form-part + .form-part {
   border-top: 1px solid var(--separator);

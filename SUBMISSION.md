@@ -10,7 +10,7 @@ Closed Loop
 
 ## Tagline (short)
 
-Daily check-ins for people living alone: an Alexa+ MCP add-on that records what was actually said, follows up, and tells family only when the loop stays open.
+A safety net in your own words: "If I haven't said good night by ten, let Dana know." An Alexa+ add-on that closes the loop when you speak, and tells family only when you don't.
 
 ## Track and mini challenges
 
@@ -33,11 +33,13 @@ Families improvise: an Alexa reminder, then a phone call to check. A reminder ca
 
 Closed Loop is a self-hosted MCP server for an Alexa+ add-on, plus a caregiver console and a simulated Alexa+ client. It is live on AWS.
 
+Care tools are usually set up by the family, about the person. Closed Loop starts with the person: the older adult can set part of their own safety net by voice, and the family's check-ins work the same honest way.
+
+- **Lets the person set their own safety net, by voice.** Margaret says "If I haven't said good night by ten, let Dana know." The assistant reads it back and nothing is set until Margaret says yes (two MCP calls with a signed, five-minute token, so a model cannot create one in a single unconfirmed call). It is never asked: the loop closes when Margaret says "good night" before 10 pm, so it needs no proactive prompt. Otherwise Dana gets an email in Margaret's name: "Margaret asked Closed Loop to let you know if Margaret hadn't said "good night" by 10 pm. Margaret hasn't yet. This is not an emergency alert." Family see it in the console as *Set by Margaret* and can pause everything, but cannot create, edit, or cancel it.
 - **Records honestly.** "I think so, maybe after lunch" is stored as *said later*, with a follow-up at 13:00. A hedged yes becomes *said they would, not sure*. The ledger only ever says *reported by the person*, *said later*, *no response*, or *needs human contact*, never "confirmed".
 - **Follows up** at the time the person chose, or after the caregiver's interval, a capped number of times, never twice in one turn.
 - **Tells a human, without crying wolf.** When a window closes with no answer, Amazon SES sends a plain email ("We did not hear back about your morning routine today. This is not an emergency alert.") with a signed acknowledge link. Nobody acknowledges for a second day, the second contact is told. A daily cap and quiet hours keep it calm.
 - **Lets family ask from their own Alexa.** "How is Mom doing today?" reads back the day exactly as recorded ("needs human contact; a call may help"). A family member's linked account can read the day but can never answer, defer, or pause a check-in for the person: the server refuses it.
-- **Lets the person write part of their own safety net, by voice.** Margaret says "If I haven't said good night by ten, let Dana know." The assistant reads it back and nothing is set until Margaret says yes (two MCP calls with a signed, five-minute token, so a model cannot create one in a single unconfirmed call). It is never asked: the loop closes when Margaret says "good night" before 10 pm, so it needs no proactive prompt. Otherwise Dana gets an email in Margaret's name: "Margaret asked Closed Loop to let you know if Margaret hadn't said "good night" by 10 pm. Margaret hasn't yet. This is not an emergency alert." Family see it in the console as *Set by Margaret* and can pause everything, but cannot create, edit, or cancel it.
 - **Handles distress carefully:** confusion gets the family's own calming line and no more questions, plus a neutral note to family; emergency wording gets one fixed line, "If this is an emergency, please call 911 now" (and 988 for self-harm wording).
 - **Puts the family in charge, with consent:** check-ins in their own words (linted so no drug names or doses are read aloud), who gets emailed, quiet hours, plan expiry, recorded consent that stops everything when revoked, and delete-all-data.
 - **Shows results as MCP App cards** (`ui://` resource, SEP-1865) using Alexa+'s documented `_meta.ui` placement.
@@ -50,12 +52,12 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 
 | The Alexa+ judging guidance lists | Closed Loop | Video |
 |---|---|---|
+| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent and email cap, and emails at the person's own deadline even during quiet hours, because that is what they asked for. A one-click guided tour plays it live: `/simulator/?tour=good-night`. | `<TIMESTAMP>` |
 | An agentic workflow that orchestrates across services autonomously | Every minute EventBridge Scheduler runs a tick that closes windows in DynamoDB, emails family through SES, escalates to a second contact on day two, and stops when someone acknowledges. No human in the loop until a human is needed. | 1:33 |
 | A context-aware add-on that keeps state across sessions | The ledger, follow-ups at the time the person chose, the distress quiet period, and the family's view of the day all persist across sessions. | 0:56, 1:20, 2:13 |
 | Media support (cards) and MCP Apps | One MCP App card renders all eight tool results, including the family summary and the person's own check-in, in a sandboxed iframe with the spec's handshake. | 0:56 |
 | Agent Skills | `skills/closed-loop-checkins/SKILL.md` | 2:38 |
 | Not a single-turn Q&A bot | Answers, deferrals and follow-ups span hours and days; family hear the result later from their own device. | throughout |
-| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent and email cap, and emails at the person's own deadline even during quiet hours, because that is what they asked for. | draft scene, not yet in the video |
 
 ### How we built it
 
@@ -75,6 +77,7 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 
 ### Accomplishments that we're proud of
 
+- The person, not only the family, can create a check-in, by voice, with a two-step yes that no model can skip.
 - The ledger never claims more than the person said, and every unsafe path fails closed.
 - Exactly-once email under concurrency, proven against real DynamoDB.
 - A real MCP App card that works with both the MCP Apps spec and Alexa+'s documented placement.
@@ -82,7 +85,7 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 
 ### What we learned
 
-Most of the work in a "reminder" product is what happens after the question: honest recording, follow-up timing, and knowing when to involve a human without crying wolf.
+Most of the work in a "reminder" product is what happens after the question: honest recording, follow-up timing, and knowing when to involve a human without crying wolf. And the most respectful check-in is one the person sets up for themselves.
 
 ### What's next
 
@@ -96,6 +99,7 @@ TypeScript, Node.js, Model Context Protocol (TypeScript SDK 1.x, MCP Apps), Agen
 
 - Repository: https://github.com/Juiccef/closed-loop (MIT license)
 - Demo video: `<VIDEO_URL>`
+- Guided demo for judges (2 minutes, live): `<LIVE_URL>/simulator/?tour=good-night` (access code in the judges-only testing field)
 
 ## Product feedback (required: every tool used)
 

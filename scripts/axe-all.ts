@@ -27,12 +27,24 @@ async function prepare(page: Page, name: string) {
     await page.waitForTimeout(800);
     await page.evaluate(() => document.querySelector('#traffic details')?.setAttribute('open', ''));
   }
+  if (name === 'simulator tour') {
+    // Mid-tour, so done, current, and upcoming steps are all on screen.
+    const ready = (label: string) =>
+      page.waitForFunction((l) => document.querySelector('#tour-next')?.getAttribute('aria-disabled') === 'false' && document.querySelector('#tour-next')?.textContent?.startsWith(l), label, { timeout: 20_000 });
+    await ready('Start:');
+    await page.click('#tour-next');
+    await ready('Next: Good night');
+    await page.click('#tour-next');
+    await ready('Next: Dana asks');
+    await page.waitForTimeout(400); // the button's color transition as it re-enables
+  }
 }
 
 const pages: Array<[string, string]> = [
   ['landing', `${BASE}/`],
   ['console', `${BASE}/console/`],
   ['simulator', `${BASE}/simulator/`],
+  ['simulator tour', `${BASE}/simulator/?tour=good-night`],
   ['sign-in', authorize],
   ...(ACK ? ([['acknowledge', ACK]] as Array<[string, string]>) : []),
 ];
@@ -54,7 +66,7 @@ for (const scheme of ['light', 'dark'] as const) {
       return r.violations.map((v: { id: string; impact: string; nodes: Array<{ target: string[]; failureSummary?: string }> }) => ({ id: v.id, impact: v.impact, nodes: v.nodes.slice(0, 4).map((n) => `${n.target.join(' ')} :: ${(n.failureSummary ?? '').split('\n').slice(1, 2).join(' ').trim()}`) }));
     });
     total += violations.length;
-    console.log(`${scheme.padEnd(5)} ${name.padEnd(12)} ${violations.length ? `${violations.length} violation(s)` : '0 violations'}`);
+    console.log(`${scheme.padEnd(5)} ${name.padEnd(15)} ${violations.length ? `${violations.length} violation(s)` : '0 violations'}`);
     for (const v of violations) console.log(`   ${v.id} (${v.impact})\n     ${v.nodes.join('\n     ')}`);
     await page.close();
   }

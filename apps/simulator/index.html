@@ -19,6 +19,10 @@
       </a>
       <p class="topnav-title">Simulated Alexa+ client</p>
       <span class="topnav-spacer"></span>
+      <button type="button" class="btn small tour-open" id="tour-open" data-tour-open>
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" /></svg>
+        <span>Good night tour<span class="tour-open-len">, 2 min</span></span>
+      </button>
       <nav aria-label="Pages">
         <ul class="topnav-links">
           <li><a href="/console/">Caregiver console <span class="icon" aria-hidden="true"></span></a></li>
@@ -27,6 +31,29 @@
     </header>
 
     <aside class="sim-notice" aria-label="Simulation notice"><span class="stamp">Simulated</span> <span id="simulated-notice"></span></aside>
+
+    <div class="tour-entry">
+      <button type="button" class="btn" data-tour-open>
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.8v10.4L13 8z" fill="currentColor" /></svg>
+        <span>Good night tour, 2 min</span>
+      </button>
+    </div>
+
+    <section class="tour container" id="tour" aria-labelledby="tour-title" hidden>
+      <div class="tour-top">
+        <h2 id="tour-title" class="tour-title">Good night tour <span class="tour-sub">Simulated Alexa+ client, real MCP calls</span></h2>
+        <div class="tour-path">
+          <ol class="tour-steps" id="tour-main" aria-label="Tour steps"></ol>
+          <span class="tour-branch-label" id="tour-branch-label">What if Margaret doesn’t?</span>
+          <ol class="tour-steps" id="tour-branch" start="4" aria-labelledby="tour-branch-label"></ol>
+        </div>
+        <button type="button" class="btn ghost small" id="tour-end">End tour</button>
+      </div>
+      <div class="tour-bottom">
+        <p class="tour-caption" id="tour-caption" aria-live="polite"></p>
+        <button type="button" class="btn" id="tour-next" aria-disabled="true">Getting ready…</button>
+      </div>
+    </section>
 
     <main class="sim-grid">
       <h1 class="visually-hidden">Closed Loop: simulated Alexa+ client</h1>

@@ -54,6 +54,154 @@
   color: var(--text-2);
 }
 
+/* ---- Guided tour: a narrator strip above the three panes (the panes give up its height) ---- */
+.tour-open .icon,
+.tour-entry .icon {
+  width: 0.85em;
+  height: 0.85em;
+}
+.tour-entry {
+  display: none;
+}
+.tour {
+  margin: 1rem 1.25rem 0;
+  padding: 0.8rem 1.1rem 0.9rem 1.25rem;
+}
+.tour-top,
+.tour-bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem 1.25rem;
+  flex-wrap: wrap;
+}
+.tour-bottom {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--separator);
+}
+.tour-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.tour-sub {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.tour-path {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  min-width: 0;
+}
+.tour-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tour-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.65rem 0.2rem 0.25rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.tour-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--control-border);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.tour-steps li[data-state='current'] {
+  background: var(--blue-soft);
+  color: var(--text);
+}
+.tour-steps li[data-state='current'] .tour-mark {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: var(--on-blue);
+}
+.tour-steps li[data-state='done'] {
+  color: var(--text);
+}
+/* Done: a check mark in place of the number (shape, not only color). */
+.tour-steps li[data-state='done'] .tour-mark {
+  border: none;
+  background: var(--green);
+  mask: var(--i-ok) center / contain no-repeat;
+}
+.tour-branch-label {
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--separator);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.tour-caption {
+  flex: 1 1 24rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+#tour-next {
+  min-width: 15rem;
+}
+.btn[aria-disabled='true'],
+.btn[aria-disabled='true']:hover {
+  background: var(--fill);
+  border-color: var(--fill);
+  color: var(--text-2);
+  cursor: progress;
+}
+body.touring .sim-grid {
+  --pane-h: max(520px, calc(100vh - var(--nav-h) - 8rem - var(--tour-h, 0px)));
+}
+/* The tour speaks for Margaret and Dana and moves the clock, so the controls it presses step aside
+   and the conversation and the family email get the room. */
+body.touring .chips,
+body.touring .routine,
+body.touring .clock-note,
+body.touring .demo-start {
+  display: none;
+}
+.tour-spot {
+  outline: 3px solid var(--blue);
+  outline-offset: 3px;
+  animation: tour-spot 2.6s ease forwards;
+}
+@keyframes tour-spot {
+  70% {
+    outline-color: var(--blue);
+  }
+  100% {
+    outline-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot {
+    animation: none;
+  }
+}
+
 /* ---- Orb: the Closed Loop ring, not a device ---- */
 .orb {
   flex: none;
@@ -775,9 +923,47 @@
     height: 34rem;
   }
 }
-@media (max-width: 760px) {
-  .topnav-title {
+@media (max-width: 900px) {
+  .tour-open-len {
     display: none;
+  }
+}
+@media (max-width: 760px) {
+  .topnav-title,
+  .topnav .tour-open {
+    display: none;
+  }
+  .tour-entry {
+    display: block;
+    margin: 0.75rem 1rem 0;
+  }
+  .tour-entry .btn {
+    width: 100%;
+  }
+  body.touring .tour-entry {
+    display: none;
+  }
+  /* The tour stays in reach while the panes stack: caption and button only. */
+  .tour {
+    position: sticky;
+    top: var(--nav-h);
+    z-index: 10;
+    margin: 0.75rem 1rem 0;
+    box-shadow: var(--elevation-high);
+  }
+  .tour-path {
+    display: none;
+  }
+  .tour-top {
+    justify-content: space-between;
+  }
+  .tour-bottom {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+  }
+  #tour-next {
+    flex: 1 1 100%;
+    min-width: 0;
   }
   .sim-notice {
     align-items: flex-start;

@@ -9,6 +9,7 @@ import {
   acknowledge,
   addDays,
   advanceClock,
+  DEMO_HOUSEHOLD_ID,
   isValidHHMM,
   ledgerLine,
   lintCheckinText,
@@ -329,7 +330,11 @@ button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
       if (path === '/planner' && req.method === 'POST') {
         if (!cfg.planner) return json(503, { error: 'Planner not configured.' });
-        return json(200, await cfg.planner(await readJson(req)));
+        const body = await readJson<Record<string, unknown>>(req);
+        // The family's calming line, for distress when there is no check-in to record it against.
+        const household = typeof body.householdId === 'string' && ID.test(body.householdId) ? body.householdId : DEMO_HOUSEHOLD_ID;
+        const calmingLine = (await store.listCheckins(household)).find((d) => d.active && !isOwnCheckin(d))?.calmingLine ?? null;
+        return json(200, await cfg.planner({ ...body, calmingLine }));
       }
 
       // ---- Admin (demo only) ----

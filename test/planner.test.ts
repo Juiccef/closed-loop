@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { CRISIS_REPLY, SELF_HARM_REPLY } from '../packages/core/src';
+import { afterEach, describe, expect, it } from 'vitest';
+import { CRISIS_REPLY, SELF_HARM_REPLY, setRealTimeSource } from '../packages/core/src';
 import { parseOwnCheckin, rulesPlanner } from '../packages/api/src/planner';
 import { bedrockOrRulesPlanner } from '../packages/api/src/planner-bedrock';
+import { createApiHandler } from '../packages/api/src/router';
+import { demo } from './helpers';
+
+afterEach(() => setRealTimeSource(() => Date.now()));
 
 const current = { occurrenceId: 'OCC#2026-10-19#morning#0', label: 'your morning routine', prompt: 'Have you done it?' };
 
@@ -33,6 +37,30 @@ describe('planner: safety runs first', () => {
       if (before === undefined) delete process.env.BEDROCK_MODEL_ID;
       else process.env.BEDROCK_MODEL_ID = before;
     }
+  });
+
+  it("distress with no check-in to record it against gets the family's own calming line from the server, not a menu", async () => {
+    const d = await demo();
+    const handle = createApiHandler({
+      store: d.store,
+      adminToken: 'admin',
+      ackSecret: 'test-secret',
+      runTick: async () => d.tick(),
+      seed: async () => {},
+      publicConfig: () => ({}),
+      demoConfig: () => ({}),
+      planner: async (body) => rulesPlanner(body),
+    });
+    const plan = async (userText: string) =>
+      (await (await handle(new Request('http://localhost/planner', { method: 'POST', headers: { authorization: 'Bearer admin' }, body: JSON.stringify({ userText, current: null }) }))).json()) as {
+        toolCall: unknown;
+        reply: string;
+      };
+    const calm = "You're safe at home, Margaret. Dana will give you a call this evening.";
+    expect(await plan("I'm scared. Where is everyone?")).toMatchObject({ toolCall: null, reply: calm });
+    expect(await plan('Help!')).toMatchObject({ toolCall: null, reply: `${calm} ${CRISIS_REPLY}` });
+    expect(await plan("I fell and I can't get up")).toMatchObject({ toolCall: null, reply: CRISIS_REPLY });
+    expect((await plan('Help me with the crossword')).reply).not.toContain('911');
   });
 
   it('ordinary replies are unchanged', () => {

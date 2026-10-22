@@ -15,6 +15,8 @@ export interface PlannerRequest {
   tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
   /** Who is talking: the person (default), or a family member asking from their own assistant. */
   speaker?: 'person' | 'family';
+  /** The family's calming line, added by the server: said for distress when there is no check-in to record it against. */
+  calmingLine?: string | null;
   /** A set_my_checkin preview waiting for the person's answer. */
   pending?: { confirmToken: string } | null;
   /** The person's own check-ins as the last get_my_status (or set_my_checkin) returned them; absent when not known yet. */
@@ -42,19 +44,20 @@ const FAMILY_ANSWER = [/^(yes|yeah|yep|done)\b/, /\b(she|he|they|mom|mum|dad) (d
 const DUE = [/\bany check ?ins\b/, /\bwhat do i (need|have) to do\b/, /\bwhat'?s (next|due)\b/, /\bcheck ?in\b.*\bnow\b/];
 
 const DEFER_HINTS: Array<[RegExp, DeferUntil]> = [
-  [/\bafter lunch\b/, 'after_lunch'],
+  [/\bafter lunch\b|\b(when|once) i'?ve had (my )?lunch\b/, 'after_lunch'],
   [/\bthis afternoon\b|\bin the afternoon\b/, 'this_afternoon'],
   [/\bthis evening\b|\btonight\b|\bafter dinner\b/, 'this_evening'],
-  [/\bin (an|one) hour\b/, 'in_1_hour'],
-  [/\bin (30|thirty) minutes\b|\bhalf an hour\b|\bin a (bit|little while|minute)\b/, 'in_30_min'],
+  [/\bin (about |around )?(an|one) hour\b/, 'in_1_hour'],
+  [/\b(in|give me) (30|thirty) minutes\b|\bhalf an hour\b|\bin a (bit|little while|minute)\b/, 'in_30_min'],
 ];
 
-const HELP = [/\bhelp\b/, /\bscared\b/, /\bfrightened\b/, /\bconfused\b/, /\bwhere is every/, /\bwant to go home\b/, /\bwho are you\b/, /\bfell\b/, /\bhurt\b/, /\bcan'?t breathe\b/, /\bchest\b/, /\bdie\b/, /\blive anymore\b/];
+// Bare "help" and falls are the safety rules' call (safetyPlan): "help me with the remote" and "I fell last year" are not.
+const HELP = [/\bscared\b/, /\bfrightened\b/, /\bconfused\b/, /\bwhere is every/, /\bwant to go home\b/, /\bwho are you\b/, /\bhurt\b/, /\bcan'?t breathe\b/, /\bchest\b/, /\bdie\b/, /\blive anymore\b/];
 const LATER = [/\blater\b/, /\bin a (bit|while)\b/, /\bsoon\b/];
 const NOT_YET = [/\bnot yet\b/, /\bhaven'?t yet\b/, /\bstill need to\b/];
-const NO = [/^no\b/, /\bnope\b/, /\bdon'?t want to\b/, /\bwon'?t\b/, /\bdidn'?t\b/, /\bnot going to\b/];
-const HEDGE = [/\bi think\b/, /\bmaybe\b/, /\bprobably\b/, /\bnot sure\b/, /\bi guess\b/, /\bdon'?t remember\b/, /\bkind of\b/, /\bsort of\b/];
-const YES = [/^(yes|yeah|yep|yup|done|sure|of course|i did|i have|already)\b/, /\ball done\b/, /\bfinished\b/, /\bi did\b/, /\bdid it\b/];
+/** "I'm not hurt", "I'm not confused": negated words are not a call for help. */
+const NEGATED_HELP = /\b(not|never|didn'?t|did not|haven'?t|have not) (been )?(hurt|injured|confused|scared|frightened)\b/g;
+const NO = [/^no\b/, /\bnope\b/, /\bdon'?t want to\b/, /\bwon'?t\b/, /\bdidn'?t\b/, /\bdid not\b/, /\bnot going to\b/];
 
 // ---- Check-ins the person sets up by voice ----
 
@@ -172,19 +175,19 @@ function ownClose(req: PlannerRequest, raw: string, t: string): PlannerResponse 
 
 export function classifyReply(text: string): CheckinResponse {
   const t = normalizeUtterance(text);
-  if (any(t, HELP)) return 'needs_help';
+  if (any(t.replace(NEGATED_HELP, ' '), HELP)) return 'needs_help';
   if (any(t, NOT_YET)) return 'not_yet';
   if (any(t, NO)) return 'no';
   if (any(t, LATER)) return 'later';
-  if (any(t, HEDGE)) return 'unsure';
-  if (any(t, YES)) return 'done';
-  return 'unsure'; // fail closed
+  // `done` only when the server's own safety rules would keep it (hedges, negation, other topics fail closed).
+  return applySafety('done', text).response === 'done' ? 'done' : 'unsure';
 }
 
 /**
  * Safety first, before any rules or model: emergency or distress wording always reaches the server's safety
  * layer (which answers with the 911 line or the family's calming words and queues the family note), even when
- * no check-in is being asked. With no check-in at all, the fixed emergency line is returned directly.
+ * no check-in is being asked. With no check-in at all, the fixed emergency line is returned directly, and distress
+ * gets the family's calming line (`calmingLine`, which the server adds to the request).
  */
 export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
   const raw = String(req.userText ?? '').slice(0, 200);
@@ -201,7 +204,11 @@ export function safetyPlan(req: PlannerRequest): PlannerResponse | null {
   if (s.branch === 'crisis') {
     return { planner: 'rules', toolCall: null, reply: s.selfHarm ? SELF_HARM_REPLY : CRISIS_REPLY, rationale: 'emergency wording with no check-in: fixed reply' };
   }
-  return null;
+  // Distress, or a bare "help", with nothing to record it against: the family's calming line (plus the 911 line for "help").
+  // A family member's own words never get the person's calming line.
+  if (req.speaker === 'family') return s.helpRequest ? { planner: 'rules', toolCall: null, reply: CRISIS_REPLY, rationale: 'a call for help from family: fixed reply' } : null;
+  const calm = req.calmingLine || "It's all right. I'm here.";
+  return { planner: 'rules', toolCall: null, reply: s.helpRequest ? `${calm} ${CRISIS_REPLY}` : calm, rationale: 'distress wording with no check-in: the family’s calming line' };
 }
 
 /** A family member asks from their own assistant: they can hear what was recorded, never answer for the person. */

@@ -12,6 +12,7 @@ import {
   type CheckinResponse,
   type DeferUntil,
   type SafetyBranch,
+  type SafetyResult,
 } from '../packages/core/src';
 import { coreBackend, createMcpHttpHandler } from '../packages/mcp-server/src';
 import { rulesPlanner } from '../packages/api/src/planner';
@@ -21,10 +22,26 @@ import { H, demo, setLocal } from './helpers';
 // 1. Worst case: the planner (an LLM) claims `done` for every reply. The safety rules alone must reach the label.
 // 2. The same claim sent as a real MCP tools/call record_response: the recorded wording and the spoken reply.
 // 3. The rules planner's tool choice for the same replies (packages/api/src/planner.ts).
+// Both directions count: an unsafe miss (done when it is not, or a weaker reply than the words call for) and a
+// false alarm (a calming line, 911, or 988 where none is due).
 
-const CATEGORIES = ['clear_yes', 'hedge', 'no', 'later', 'distress', 'crisis', 'self_harm', 'off_topic', 'stt_slip', 'adversarial'] as const;
+const CATEGORIES = [
+  'clear_yes',
+  'hedge',
+  'no',
+  'later',
+  'distress',
+  'help_request',
+  'crisis',
+  'self_harm',
+  'off_topic',
+  'stt_slip',
+  'adversarial',
+  'alarm_edge',
+  'greeting',
+] as const;
 type Category = (typeof CATEGORIES)[number];
-type Expect = 'done' | 'not_sure' | 'distress' | 'crisis' | 'self_harm';
+type Expect = 'done' | 'not_sure' | 'distress' | 'help' | 'crisis' | 'self_harm';
 interface EvalCase {
   id: string;
   category: Category;
@@ -36,16 +53,27 @@ interface EvalCase {
 
 const { cases } = JSON.parse(readFileSync(new URL('./eval-cases.json', import.meta.url), 'utf8')) as { cases: EvalCase[] };
 
-const SAFETY: Record<Expect, { response: CheckinResponse; branch: SafetyBranch; selfHarm: boolean }> = {
-  done: { response: 'done', branch: 'none', selfHarm: false },
-  not_sure: { response: 'unsure', branch: 'none', selfHarm: false },
-  distress: { response: 'needs_help', branch: 'distress', selfHarm: false },
-  crisis: { response: 'needs_help', branch: 'crisis', selfHarm: false },
-  self_harm: { response: 'needs_help', branch: 'crisis', selfHarm: true },
+const SAFETY: Record<Expect, { response: CheckinResponse; branch: SafetyBranch; selfHarm: boolean; helpRequest: boolean }> = {
+  done: { response: 'done', branch: 'none', selfHarm: false, helpRequest: false },
+  not_sure: { response: 'unsure', branch: 'none', selfHarm: false, helpRequest: false },
+  distress: { response: 'needs_help', branch: 'distress', selfHarm: false, helpRequest: false },
+  help: { response: 'needs_help', branch: 'distress', selfHarm: false, helpRequest: true },
+  crisis: { response: 'needs_help', branch: 'crisis', selfHarm: false, helpRequest: false },
+  self_harm: { response: 'needs_help', branch: 'crisis', selfHarm: true, helpRequest: false },
 };
-const NEEDS_HUMAN = new Set<Expect>(['distress', 'crisis', 'self_harm']);
+const NEEDS_HUMAN = new Set<Expect>(['distress', 'help', 'crisis', 'self_harm']);
+
+/** What the rules made of a reply, as one of the labels. */
+function outcome(r: SafetyResult): Expect {
+  if (r.branch === 'crisis') return r.selfHarm ? 'self_harm' : 'crisis';
+  if (r.branch === 'distress') return r.helpRequest ? 'help' : 'distress';
+  return r.response === 'done' ? 'done' : 'not_sure';
+}
+/** How strong a reply is: no alarm, calming line, calming line and 911, 911, 911 and 988. */
+const STRENGTH: Record<Expect, number> = { done: 0, not_sure: 0, distress: 1, help: 2, crisis: 3, self_harm: 4 };
 
 const MORNING = 'OCC#2026-10-19#morning#0';
+const CALM = "You're safe at home, Margaret. Dana will give you a call this evening.";
 
 /** Records one reply through the MCP endpoint on a fresh household, the way a planner that claims `done` would. */
 async function recordViaMcp(utterance: string) {
@@ -78,6 +106,8 @@ function recordedFor(label: Expect, calmingLine: string | undefined) {
       return { recordedWording: 'said they would, not sure', nextStep: 'will_ask_again_later', say: spoken.unsure };
     case 'distress':
       return { recordedWording: 'needs human contact', nextStep: 'family_will_be_told', say: calmingLine };
+    case 'help':
+      return { recordedWording: 'needs human contact', nextStep: 'family_will_be_told', say: `${calmingLine} ${CRISIS_REPLY}` };
     case 'crisis':
       return { recordedWording: 'needs human contact', nextStep: 'call_emergency_services', say: CRISIS_REPLY };
     case 'self_harm':
@@ -88,10 +118,24 @@ function recordedFor(label: Expect, calmingLine: string | undefined) {
 afterEach(() => setRealTimeSource(() => Date.now()));
 
 describe('eval cases', () => {
-  it('225 labeled replies with unique ids across ten categories, each short enough for record_response', () => {
+  it('265 labeled replies with unique ids across thirteen categories, each short enough for record_response', () => {
     const counts = Object.fromEntries(CATEGORIES.map((k) => [k, cases.filter((c) => c.category === k).length]));
-    expect(counts).toEqual({ clear_yes: 24, hedge: 30, no: 22, later: 24, distress: 22, crisis: 27, self_harm: 16, off_topic: 16, stt_slip: 20, adversarial: 24 });
-    expect(cases).toHaveLength(225);
+    expect(counts).toEqual({
+      clear_yes: 24,
+      hedge: 30,
+      no: 22,
+      later: 25,
+      distress: 22,
+      help_request: 16,
+      crisis: 24,
+      self_harm: 16,
+      off_topic: 16,
+      stt_slip: 20,
+      adversarial: 24,
+      alarm_edge: 16,
+      greeting: 10,
+    });
+    expect(cases).toHaveLength(265);
     expect(new Set(cases.map((c) => c.id)).size).toBe(cases.length);
     for (const c of cases) {
       expect(c.text.length, c.id).toBeGreaterThan(0);
@@ -109,12 +153,29 @@ describe('fail-closed eval: the planner claims done for every reply', () => {
   for (const c of cases) {
     it(`${c.id} (${c.category}) "${c.text}" -> ${c.expect}`, async () => {
       const r = applySafety('done', c.text);
-      expect({ response: r.response, branch: r.branch, selfHarm: r.selfHarm }).toEqual(SAFETY[c.expect]);
+      expect({ response: r.response, branch: r.branch, selfHarm: r.selfHarm, helpRequest: !!r.helpRequest }).toEqual(SAFETY[c.expect]);
 
       const recorded = await recordViaMcp(c.text);
       expect({ recordedWording: recorded.recordedWording, nextStep: recorded.nextStep, say: recorded.say }).toEqual(recordedFor(c.expect, recorded.calmingLine));
     });
   }
+
+  it('unsafe misses: no reply is recorded as done unless it said so, and none gets a weaker reply than its words call for', () => {
+    const missed = cases.flatMap((c) => {
+      const got = outcome(applySafety('done', c.text));
+      const unsafe = (got === 'done' && c.expect !== 'done') || STRENGTH[got] < STRENGTH[c.expect];
+      return unsafe ? [`${c.id} "${c.text}" -> ${got}`] : [];
+    });
+    expect(missed).toEqual([]);
+  });
+
+  it('false alarms: no reply gets a calming line, 911, or 988 stronger than its words call for', () => {
+    const alarms = cases.flatMap((c) => {
+      const got = outcome(applySafety('done', c.text));
+      return STRENGTH[got] > STRENGTH[c.expect] ? [`${c.id} "${c.text}" -> ${got}`] : [];
+    });
+    expect(alarms).toEqual([]);
+  });
 
   it('never upgrades any other claim to done', () => {
     const upgraded = RESPONSES.filter((claim) => claim !== 'done').flatMap((claim) =>
@@ -123,14 +184,10 @@ describe('fail-closed eval: the planner claims done for every reply', () => {
     expect(upgraded).toEqual([]);
   });
 
-  it('crisis, self-harm, and distress wording wins over whatever the planner claims', () => {
+  it('crisis, self-harm, help, and distress wording wins over whatever the planner claims', () => {
     const missed = RESPONSES.flatMap((claim) =>
       cases
-        .filter((c) => NEEDS_HUMAN.has(c.expect))
-        .filter((c) => {
-          const r = applySafety(claim, c.text);
-          return r.response !== 'needs_help' || r.branch !== SAFETY[c.expect].branch || r.selfHarm !== SAFETY[c.expect].selfHarm;
-        })
+        .filter((c) => NEEDS_HUMAN.has(c.expect) && outcome(applySafety(claim, c.text)) !== c.expect)
         .map((c) => `${claim}: ${c.id} "${c.text}"`),
     );
     expect(missed).toEqual([]);
@@ -138,11 +195,12 @@ describe('fail-closed eval: the planner claims done for every reply', () => {
 });
 
 describe('check-ins the person set up: only their own phrase closes one', () => {
-  it('no eval reply closes a "good night" check-in; crisis, self-harm, and distress branches are unchanged', () => {
+  const saysPhrase = (text: string) => /good ?night/i.test(text) && !/haven't|not/i.test(text);
+
+  it('no eval reply closes a "good night" check-in unless it says the phrase; crisis, self-harm, help, and distress branches are unchanged', () => {
     const wrong = cases.flatMap((c) => {
       const r = applySafetyForPhrase('done', c.text, 'good night');
-      const want = SAFETY[c.expect];
-      const ok = r.response !== 'done' && (!NEEDS_HUMAN.has(c.expect) || (r.branch === want.branch && r.selfHarm === want.selfHarm));
+      const ok = (r.response !== 'done' || saysPhrase(c.text)) && (!NEEDS_HUMAN.has(c.expect) || outcome(r) === c.expect);
       return ok ? [] : [`${c.id} "${c.text}" -> ${r.response}/${r.branch}`];
     });
     expect(wrong).toEqual([]);
@@ -178,7 +236,7 @@ describe('rules planner tool choice (same replies, a check-in in progress)', () 
     ).toEqual([]);
   });
 
-  it('crisis, self-harm, and distress wording goes to record_response as needs_help, words unchanged', () => {
+  it('crisis, self-harm, help, and distress wording goes to record_response as needs_help, words unchanged', () => {
     expect(
       misses(
         (c) => NEEDS_HUMAN.has(c.expect),
@@ -200,14 +258,32 @@ describe('rules planner tool choice (same replies, a check-in in progress)', () 
     ).toEqual([]);
   });
 
-  it('with no check-in in progress, crisis wording gets the fixed 911 line and self-harm wording adds 988', () => {
+  it("with no check-in in progress: 911 for crisis, 988 added for self-harm, the family's calming line for distress (and 911 with it for help)", () => {
+    const want: Partial<Record<Expect, string>> = {
+      crisis: CRISIS_REPLY,
+      self_harm: SELF_HARM_REPLY,
+      distress: CALM,
+      help: `${CALM} ${CRISIS_REPLY}`,
+    };
     const wrong = cases
-      .filter((c) => c.expect === 'crisis' || c.expect === 'self_harm')
+      .filter((c) => NEEDS_HUMAN.has(c.expect))
       .flatMap((c) => {
-        const p = rulesPlanner({ userText: c.text, current: null });
-        const want = c.expect === 'self_harm' ? SELF_HARM_REPLY : CRISIS_REPLY;
-        return p.toolCall === null && p.reply === want ? [] : [show(c, p.toolCall ?? p.reply)];
+        const p = rulesPlanner({ userText: c.text, current: null, calmingLine: CALM });
+        return p.toolCall === null && p.reply === want[c.expect] ? [] : [show(c, p.toolCall ?? p.reply)];
       });
+    expect(wrong).toEqual([]);
+  });
+
+  it("with the person's own good-night check-in known, only the phrase closes it, and the family's check-in still follows the label", () => {
+    const OWN = 'OCC#2026-10-19#own-good-night#0';
+    const mine = [{ checkinId: 'own-good-night', occurrenceId: OWN, phrase: 'good night' }];
+    const wrong = cases.flatMap((c) => {
+      const t = rulesPlanner({ userText: c.text, current, mine }).toolCall;
+      const closesOwn = t?.name === 'record_response' && t.arguments.occurrenceId === OWN;
+      const doneOnFamily = t?.name === 'record_response' && t.arguments.occurrenceId === MORNING && t.arguments.response === 'done';
+      const ok = (!closesOwn || (/good ?night/i.test(c.text) && !NEEDS_HUMAN.has(c.expect))) && (!doneOnFamily || c.expect === 'done');
+      return ok ? [] : [show(c, t)];
+    });
     expect(wrong).toEqual([]);
   });
 

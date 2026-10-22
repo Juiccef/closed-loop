@@ -219,7 +219,7 @@ export async function recordResponse(
       recordedAs: 'not_recorded',
       recordedWording: 'not recorded (check-ins are turned off)',
       nextStep: safety.branch === 'crisis' ? 'call_emergency_services' : 'none',
-      say: safety.branch === 'crisis' ? crisisSay : spoken.inactive,
+      say: safety.branch === 'crisis' ? crisisSay : safety.helpRequest ? CRISIS_REPLY : spoken.inactive,
     };
   }
   const { plan, now, today } = ctx;
@@ -318,7 +318,12 @@ export async function recordResponse(
         at: nowIso,
         type: safety.branch === 'crisis' ? 'crisis_branch' : 'distress_branch',
         occurrenceId: occ.id,
-        detail: safety.branch === 'crisis' ? 'Emergency wording heard; 911 redirect given. Family note queued.' : 'Calming line given; no further questions. Family note queued.',
+        detail:
+          safety.branch === 'crisis'
+            ? 'Emergency wording heard; 911 redirect given. Family note queued.'
+            : safety.helpRequest
+              ? 'Asked for help: calming line and 911 line given; no further questions. Family note queued.'
+              : 'Calming line given; no further questions. Family note queued.',
       }),
     );
   }
@@ -330,7 +335,9 @@ export async function recordResponse(
   if (safety.branch === 'crisis') return { ...base, nextStep: 'call_emergency_services', say: crisisSay };
   if (final === 'needs_help') {
     const calmingLine = def?.calmingLine;
-    return { ...base, nextStep: hasL1 ? 'family_will_be_told' : 'none', calmingLine, say: calmingLine ?? spoken.needsHelp };
+    const say = calmingLine ?? spoken.needsHelp;
+    // A bare "Help!" is not assumed to be an emergency, but the 911 line is always given with it.
+    return { ...base, nextStep: hasL1 ? 'family_will_be_told' : 'none', calmingLine, say: safety.helpRequest ? `${say} ${CRISIS_REPLY}` : say };
   }
   if (written.state === 'NEEDS_HUMAN') return { ...base, nextStep: 'none', say: def?.calmingLine ?? spoken.needsHelp };
   if (final === 'done' && own) {

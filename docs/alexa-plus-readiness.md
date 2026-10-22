@@ -47,12 +47,12 @@ Requirement sources are the Alexa+ pages as recorded in [FRICTION_LOG.md](../FRI
 
 | Requirement | Source | Evidence | Kind |
 |---|---|---|---|
-| **`structuredContent` plus a text fallback** from every tool, with the text equal to the spoken `say` | BRIEF.md §7 | `test/mcp-protocol.test.ts` › "every tool answers with structuredContent, the same words as text, and _meta.ui" (all six tools); handshake check 8 | npm test, handshake |
+| **`structuredContent` plus a text fallback** from every tool, with the text equal to the spoken `say` | BRIEF.md §7 | `test/mcp-protocol.test.ts` › "every tool answers with structuredContent, the same words as text, and _meta.ui" (all eight tools); handshake check 8 | npm test, handshake |
 | Output schemas declared for every tool | MCP spec (`outputSchema` with `structuredContent`) | `tools/list` snapshot in `test/__snapshots__/mcp-protocol.test.ts.snap` | npm test |
 | **MCP Apps `ui://` resource**: `ui://closed-loop/checkin-card`, `text/html;profile=mcp-app`, listed and readable, no URLs in the card (it runs under the default CSP) | MCP Apps extension (SEP-1865) | "MCP App card: listed and readable as text/html;profile=mcp-app, referenced by tools and results" | npm test |
-| **`_meta.ui` on tool results** (`resourceUri`, `invoking`, `invoked`) | Alexa+ lifecycle page (FRICTION_LOG, unknowns table) | Same test (for `get_due_checkins`); "every tool answers with structuredContent …" (`resourceUri` on all six) | npm test |
+| **`_meta.ui` on tool results** (`resourceUri`, `invoking`, `invoked`) | Alexa+ lifecycle page (FRICTION_LOG, unknowns table) | Same test (for `get_due_checkins`); "every tool answers with structuredContent …" (`resourceUri` on all eight) | npm test |
 | **`_meta.ui.resourceUri` on tool definitions** | MCP Apps extension (SEP-1865) | "MCP App card: …" checks every tool in `tools/list` | npm test |
-| **Tool annotations**: `readOnlyHint` true only for `get_my_status` and `get_family_summary`; `openWorldHint` false on all six | MCP spec tool annotations. Not found among the Alexa+ requirements recorded in this repo | "tool annotations: only the two read-only tools say so, and no tool reaches outside the server"; the `tools/list` snapshot locks `idempotentHint` as well | npm test |
+| **Tool annotations**: `readOnlyHint` true only for `get_my_status` and `get_family_summary`; `openWorldHint` false on all eight | MCP spec tool annotations. Not found among the Alexa+ requirements recorded in this repo | "tool annotations: only the two read-only tools say so, and no tool reaches outside the server"; the `tools/list` snapshot locks `idempotentHint` as well | npm test |
 
 ## Latency and the hot path
 
@@ -65,7 +65,7 @@ Requirement sources are the Alexa+ pages as recorded in [FRICTION_LOG.md](../FRI
 
 | Requirement | Source | Evidence | Kind |
 |---|---|---|---|
-| Redirect apparent crises to emergency services or crisis hotlines | Alexa+ Policy Requirements, Sec. 13 (FRICTION_LOG, unknowns table) | `test/engine.test.ts` › "crisis wording gets the fixed 911 line; self-harm wording adds 988"; the fail-closed eval in `test/safety-eval.test.ts` runs 225 labeled replies through `tools/call`. Its current results, including the crisis and self-harm phrasings it still misses, are in [docs/evals.md](evals.md) | npm test |
+| Redirect apparent crises to emergency services or crisis hotlines | Alexa+ Policy Requirements, Sec. 13 (FRICTION_LOG, unknowns table) | `test/engine.test.ts` › "crisis wording gets the fixed 911 line; self-harm wording adds 988"; the fail-closed eval in `test/safety-eval.test.ts` runs 265 labeled replies through `tools/call` and counts unsafe misses and false alarms separately; results in [docs/evals.md](evals.md) | npm test |
 | Tool names and descriptions free of medical, emergency and tracking language | Alexa+ policy (BRIEF.md §7) | "tool names, titles, and descriptions stay free of medical, emergency, and tracking language" | npm test |
 
 ## Not claimed

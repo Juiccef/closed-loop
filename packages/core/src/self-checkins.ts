@@ -290,7 +290,8 @@ export async function setMyCheckin(store: Store, householdId: HouseholdId, input
   const ctx = await loadPlan(store, householdId);
   if (safety.branch === 'distress') {
     const calmingLine = ctx.plan?.checkins.find((d) => !isOwnCheckin(d))?.calmingLine;
-    return { status: 'not_set', nextStep: 'none', calmingLine, say: calmingLine ?? spoken.needsHelp };
+    const say = calmingLine ?? spoken.needsHelp;
+    return { status: 'not_set', nextStep: 'none', calmingLine, say: safety.helpRequest ? `${say} ${CRISIS_REPLY}` : say };
   }
   if (!ctx.plan || (ctx.status !== 'active' && ctx.status !== 'paused')) return { status: 'not_set', nextStep: 'none', say: inactiveSay(ctx) };
   const { plan, now, today } = ctx;

@@ -147,8 +147,11 @@ describe('MCP protocol (in-process, real backend)', () => {
       record_response: await call('record_response', { occurrenceId, response: 'done', utterance: 'Yes, done.' }),
       get_my_status: await call('get_my_status'),
       get_family_summary: await call('get_family_summary'),
+      set_my_checkin: await call('set_my_checkin', { phrase: 'good night', by: '22:00', tell: 'Dana', utterance: "If I haven't said good night by ten, let Dana know." }),
+      cancel_my_checkin: await call('cancel_my_checkin', { phrase: 'good night' }),
       pause_checkins: await call('pause_checkins', { scope: 'today' }),
     };
+    expect(Object.keys(results)).toHaveLength(8);
     for (const [name, r] of Object.entries(results)) {
       expect(r.isError, name).toBeFalsy();
       expect(r.content, name).toEqual([{ type: 'text', text: r.structuredContent.say }]);
@@ -159,7 +162,7 @@ describe('MCP protocol (in-process, real backend)', () => {
   it('tool annotations: only the two read-only tools say so, and no tool reaches outside the server', async () => {
     const { rpc } = await setup();
     const tools: Array<{ name: string; annotations: { readOnlyHint: boolean; openWorldHint: boolean } }> = (await rpc('tools/list')).body.result.tools;
-    expect(tools).toHaveLength(6);
+    expect(tools).toHaveLength(8);
     for (const t of tools) expect(t.annotations.openWorldHint, t.name).toBe(false);
     expect(tools.filter((t) => t.annotations.readOnlyHint).map((t) => t.name)).toEqual(['get_my_status', 'get_family_summary']);
   });

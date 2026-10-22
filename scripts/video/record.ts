@@ -10,7 +10,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Locator, type Page } from 'playwright';
 import { ackUrlBuilder } from '@closed-loop/core';
-import { architectureHtml, endCardHtml, problemHtml, skillHtml } from './slides';
+import { architectureHtml, dedicationHtml, endCardHtml, problemHtml, skillHtml } from './slides';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const OUT = join(ROOT, 'video', 'out');
@@ -33,6 +33,7 @@ const MCP_TOKEN = LOCAL ? 'local-dev-mcp' : env.MCP_BEARER_TOKEN!;
 const ACK_SECRET = LOCAL ? 'local-dev-ack-secret' : env.ACK_LINK_SECRET!;
 
 const AUDIO_DELAY = 0.3; // narration starts this long after each scene begins
+const DEDICATION_SECONDS = 6.5; // scene 0: the opening card, silent
 const durations = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
   Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(NARRATION, `scene-${n}.mp3`)], { encoding: 'utf8' }).trim()),
 );
@@ -192,12 +193,16 @@ const setupVideo = page.video();
 await page.close(); // setup tab (includes typing the access code): its recording is deleted
 await setupVideo?.delete();
 
-// ---- Scene 1: the problem, in sourced numbers; Scene 2: landing ----
+// ---- Scene 0: dedication (on screen only, no narration); Scene 1: the problem, in sourced numbers; Scene 2: landing ----
 await newClip();
-await page.setContent(problemHtml, { waitUntil: 'networkidle' });
+await page.setContent(dedicationHtml, { waitUntil: 'networkidle' });
 pos = { x: 1500, y: 820 };
+await begin(0);
+await at(DEDICATION_SECONDS);
+current.scenes.at(-1)!.end = (Date.now() - pageT0) / 1000;
+await page.setContent(problemHtml, { waitUntil: 'networkidle' });
 await begin(1);
-for (const [t, step] of [[0.4, 1], [4.6, 2], [10.3, 3], [15.6, 4]] as const) {
+for (const [t, step] of [[0.4, 1], [6.1, 2]] as const) {
   await at(t);
   await page.evaluate((n) => (document.body.dataset.step = String(n)), step);
 }

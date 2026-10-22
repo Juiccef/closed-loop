@@ -39,24 +39,30 @@ h1{font-size:76px;font-weight:700;letter-spacing:-.03em;margin:18px 0 6px}
 <p class="n">Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency.</p></main></body></html>`;
 
 
+// Opening card, before scene 1: a dedication, on screen only (no narration).
+export const dedicationHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;height:100vh;background:#0f141a;color:#f2f3f5;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;display:grid;place-items:center;text-align:center}
+h1{font-size:64px;font-weight:600;letter-spacing:-.025em;margin:0 0 22px;opacity:0;animation:in 1.4s .4s cubic-bezier(.2,.8,.2,1) forwards}
+p{font-size:28px;line-height:1.45;color:#b6bec9;margin:0 auto;max-width:760px;text-wrap:balance;opacity:0;animation:in 1.4s 1.6s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style></head><body><main><h1>For my grandmother.</h1><p>She had dementia. This is what I wish we&rsquo;d had while she still lived at home.</p></main></body></html>`;
+
 // Scene 1: the problem, each number with its source (verified in docs/impact.md). Steps are revealed by the recorder.
 const stat = (n: number, big: string, label: string, source: string) =>
   `<div class="stat" data-n="${n}"><p class="big">${big}</p><p class="label">${label}</p><p class="src">${source}</p></div>`;
 export const problemHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
 body{margin:0;height:100vh;background:#0f141a;color:#f2f3f5;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;display:grid;place-items:center}
-main{width:1240px}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:64px 96px}
+main{width:1320px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:72px}
 .stat{opacity:0;transform:translateY(14px);transition:opacity .7s cubic-bezier(.2,.8,.2,1),transform .7s cubic-bezier(.2,.8,.2,1)}
-body[data-step="1"] .stat[data-n="1"],body[data-step="2"] .stat:is([data-n="1"],[data-n="2"]),body[data-step="3"] .stat:not([data-n="4"]),body[data-step="4"] .stat{opacity:1;transform:none}
-.big{font-size:76px;font-weight:700;letter-spacing:-.03em;line-height:1;margin:0 0 14px}
-.label{font-size:26px;line-height:1.3;color:#d5dae1;margin:0 0 12px;max-width:520px}
-.src{font-size:16px;color:#8d99a8;margin:0}
-.stat[data-n="4"] .big{color:#7ab8f3}
+body[data-step="1"] .stat[data-n="1"],body[data-step="2"] .stat{opacity:1;transform:none}
+.big{font-size:88px;font-weight:700;letter-spacing:-.03em;line-height:1;margin:0 0 18px;white-space:nowrap}
+.big small{font-size:.5em;font-weight:600;letter-spacing:-.01em;margin-right:.25em}
+.label{font-size:28px;line-height:1.3;color:#d5dae1;margin:0 0 14px;max-width:540px}
+.src{font-size:17px;color:#8d99a8;margin:0}
 </style></head><body><main><div class="grid">
-${stat(1, '7.4 million', 'Americans 65 and older are living with Alzheimer&rsquo;s.', 'Alzheimer&rsquo;s Association, 2026 Facts and Figures')}
-${stat(2, '1 in 4', 'older Americans with dementia or mild cognitive impairment lives alone.', 'UCSF, JAMA Network Open, 2023')}
-${stat(3, 'Nearly 13 million', 'family members and friends give unpaid dementia care.', 'Alzheimer&rsquo;s Association, 2026 Facts and Figures')}
-${stat(4, 'Alexa Together', 'Amazon&rsquo;s remote caregiving service is no longer available.', 'Amazon, update of May 21, 2025')}
+${stat(1, '1 in 4', 'older Americans with dementia or mild cognitive impairment lives alone.', 'UCSF, JAMA Network Open, 2023')}
+${stat(2, '<small>Nearly</small>13 million', 'family members and friends give unpaid dementia care.', 'Alzheimer&rsquo;s Association, 2026 Facts and Figures')}
 </div></main></body></html>`;
 
 // Scene 9: the Agent Skill, shown from the real SKILL.md.

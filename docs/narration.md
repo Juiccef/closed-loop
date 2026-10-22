@@ -1,12 +1,13 @@
 # Voiceover narration (ElevenLabs)
 
-Nine clips, one per scene of the demo video. The opening states the problem with sourced numbers ([impact.md](impact.md)); every figure on screen shows its source. Written for text-to-speech: "Alexa Plus" and "nine one one" are spelled out so they are read correctly. People are referred to by name, never by an assumed pronoun.
+Nine clips, one per narrated scene of the demo video, after a silent opening card. The opening states the problem with sourced numbers ([impact.md](impact.md)); every figure on screen shows its source. Written for text-to-speech: "Alexa Plus" and "nine one one" are spelled out so they are read correctly. People are referred to by name, never by an assumed pronoun.
 
 Voice: Carolyn (warm, grounded American narrator), model `eleven_v4`. Generated in the ElevenLabs flow "Closed Loop narration".
 
 | # | Seconds | Text |
 |---|---|---|
-| 1 | 20.3 | Seven point four million Americans are living with Alzheimer's. One in four older Americans with dementia or mild cognitive impairment lives alone. Nearly thirteen million family members and friends care for them, unpaid. And Amazon's own caregiving service, Alexa Together, is no longer available. |
+| 0 | 6.5 | *(No narration.)* On screen: "For my grandmother." / "She had dementia. This is what I wish we'd had while she still lived at home." |
+| 1 | 10.7 | One in four older Americans with dementia or mild cognitive impairment lives alone. Nearly thirteen million family members and friends care for them, unpaid. *(Cut from the 20.3 s take; the 7.4 million and Alexa Together sentences were removed to make room for the opening card. Both figures stay in the submission text.)* |
 | 2 | 16.3 | A reminder can ask the question. It never learns whether the loop closed. Closed Loop is an MCP server for an Alexa Plus add-on. It records what Margaret actually said, follows up later, and tells the family only when the loop stays open. |
 | 3 | 16.2 | Margaret's daughter, Dana, writes the check-ins in everyday words. They're read aloud, so medication names and doses are turned away. Dana chooses who gets emailed, and when. And Margaret's consent is recorded. Without it, nothing runs. |
 | 4 | 23.5 | Add-ons can't speak first, so a household routine starts the conversation. This is a simulated Alexa Plus client, making real MCP calls, shown on the right. Margaret says: I think so, maybe after lunch. That isn't a yes. The planner picks a tool, and the server records exactly what was said. Later, at one o'clock. |

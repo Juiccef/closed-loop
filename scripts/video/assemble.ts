@@ -33,11 +33,15 @@ for (const [i, s] of scenes.entries()) {
   const last = i === scenes.length - 1;
   const fades = [first ? 'fade=t=in:st=0:d=0.6' : '', last ? `fade=t=out:st=${(dur - 1.2).toFixed(2)}:d=1.2` : ''].filter(Boolean).join(',');
   const video = `[0:v]trim=start=${s.start.toFixed(3)}:end=${s.end.toFixed(3)},setpts=PTS-STARTPTS,fps=30,scale=1920:1080:flags=lanczos,setsar=1${fades ? `,${fades}` : ''},format=yuv420p[v]`;
-  const audio = `[1:a]aresample=48000,adelay=${delayMs}:all=1,apad,atrim=0:${dur}${last ? `,afade=t=out:st=${(dur - 1.0).toFixed(2)}:d=1.0` : ''}[a]`;
+  // Scene 0 (the opening card) has no narration: lay silence under it.
+  const silent = s.n === 0;
+  const audio = silent
+    ? `[1:a]atrim=0:${dur}[a]`
+    : `[1:a]aresample=48000,adelay=${delayMs}:all=1,apad,atrim=0:${dur}${last ? `,afade=t=out:st=${(dur - 1.0).toFixed(2)}:d=1.0` : ''}[a]`;
   const out = join(OUT, `scene-${s.n}.mp4`);
   ffmpeg([
     '-i', s.file,
-    '-i', join(ROOT, 'video', 'narration', `scene-${s.n}.mp3`),
+    ...(silent ? ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'] : ['-i', join(ROOT, 'video', 'narration', `scene-${s.n}.mp3`)]),
     '-filter_complex', `${video};${audio}`,
     '-map', '[v]', '-map', '[a]',
     '-t', String(dur),
@@ -46,7 +50,7 @@ for (const [i, s] of scenes.entries()) {
     out,
   ]);
   parts.push(out);
-  console.log(`scene ${s.n}: ${dur.toFixed(1)} s (narration ${marks.durations[s.n - 1]!.toFixed(1)} s, clip timeline scale ${s.scale.toFixed(3)})`);
+  console.log(`scene ${s.n}: ${dur.toFixed(1)} s (${silent ? 'no narration' : `narration ${marks.durations[s.n - 1]!.toFixed(1)} s`}, clip timeline scale ${s.scale.toFixed(3)})`);
 }
 
 const list = join(OUT, 'parts.txt');

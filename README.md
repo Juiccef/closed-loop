@@ -37,9 +37,11 @@ Then open:
 
 - **Simulator:** http://localhost:5173/simulator/ (access code `local-dev`, filled in automatically locally)
 - **Caregiver console:** http://localhost:5173/console/
-- **MCP endpoint:** http://localhost:5173/mcp with header `Authorization: Bearer local-dev-mcp`
+- **MCP endpoint:** http://localhost:5173/mcp with header `Authorization: Bearer local-dev-mcp` (acts for the shared `demo` household)
 
 Local run mode uses an in-memory store, the same simulated clock, the rule-based planner, and a fake email sender that writes each email as an HTML file to `./out/emails/`.
+
+**Every visitor gets a demo household of their own.** Opening the simulator or console creates a copy of Margaret's household (`demo-<random>`) with its own simulated clock, ledger, and email panel, so two people using the hosted demo at once never affect each other. The pages keep its id for the browser tab and pass it along in links; the simulator's MCP calls use a bearer token that acts for that household only. Each copy is deleted 24 hours after it starts (DynamoDB TTL), and **Start a fresh demo day** replaces it. The shared `demo` household, the static token, and the deployment-wide clock still work for MCP Inspector and scripts.
 
 ### A two-minute walkthrough
 
@@ -142,9 +144,9 @@ Every tool returns `structuredContent` plus a short text fallback. Signatures ar
 - **Rule-based safety layer on the hot path** (no LLM): hedges ("I think so", "maybe", "just about to") turn `done` into `unsure`; anything without clear affirmative wording fails closed to `unsure`, never `done`. A 265-reply eval assumes the worst case (the planner claims `done` for everything) and counts both directions: 0 unsafe misses (nothing recorded as done that was not said, no weaker reply than the words call for) and 0 false alarms. Its first run, on 225 replies, found 44 failures; the rules were fixed and the cases kept ([docs/evals.md](docs/evals.md)).
 - **Distress branch:** calming line only, no re-quiz, and no check-ins asked for 60 minutes. With no check-in in progress, the family is still told (the note says it happened outside a check-in), and a calming line that promises a call is said only when a note goes to someone. **Crisis branch** (explicit emergencies: a fall, can't breathe, chest pain, bleeding): fixed 911 line (plus 988 for self-harm wording), with no promise that anyone is told immediately. A bare "Help!" gets the calming line and the 911 line; "help me with the remote" raises no alarm.
 - **The ledger never claims more than happened.** "No response" says whether the person was ever asked: *no response (not reached)* versus *no response (asked, no answer)*.
-- **The person's own check-ins:** two calls, so a model cannot create one in a single unconfirmed call (a spoken preview with an HMAC-signed token bound to the household and the exact draft, then the person's own words, which must be a clear yes). The same lint, consent gate, quiet hours, daily email cap, and pause apply; at most 3 at a time; the contact must already be on the email ladder. Only the person's own phrase closes one (a different phrase, no words, or "I haven't said good night" fails closed), and a crisis said while setting one up still gets the 911 line.
+- **The person's own check-ins:** two calls, so a model cannot create one in a single unconfirmed call (a spoken preview with an HMAC-signed token bound to the household and the exact draft, then the person's own words, which must be a clear yes). The same lint, consent gate, daily email cap, and pause apply (quiet hours do not: the email goes at the time the person chose); at most 3 at a time; the contact must already be on the email ladder. Only the person's own phrase closes one (a different phrase, no words, or "I haven't said good night" fails closed), and a crisis said while setting one up still gets the 911 line.
 - **Caregiver wording lint:** check-in text is read aloud, so drug names, doses, URLs, and long text are rejected with plain advice ("Use generic wording like 'your morning routine'").
-- **Consent and control:** check-ins run only with a recorded consent that names the person and who recorded it. Revoking it stops questions and emails immediately. Plans expire (default 14 days) so a forgotten plan cannot keep emailing. At most 3 emails per day; quiet hours hold emails overnight. The person can pause any time.
+- **Consent and control:** check-ins run only with a recorded consent that names the person and who recorded it. Revoking it stops questions and emails immediately. Plans expire (default 14 days) so a forgotten plan cannot keep emailing. At most 3 emails per day; quiet hours hold family check-in emails overnight (the person's own check-ins email at the time they chose). The person can pause any time.
 - **Data minimization:** utterances are cut to 200 characters and expire after 30 days (DynamoDB TTL); a delete-all-data button removes everything.
 - **Acknowledge links are signed and expire.** Opening one only shows a button, so email link scanners cannot acknowledge on someone's behalf.
 
@@ -170,9 +172,9 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 412 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier
+npm test            # 424 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier, per-visitor isolation
 npm run typecheck
-npm run e2e         # replays the demo against a running deployment and checks the ledger
+npm run e2e         # replays the demo against a running deployment, checks the ledger, and checks two visitors stay isolated
 ```
 
 Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB table as well. The eval and its results are in [docs/evals.md](docs/evals.md); each Alexa+ requirement is mapped to the test that proves it in [docs/alexa-plus-readiness.md](docs/alexa-plus-readiness.md).

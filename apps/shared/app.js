@@ -96,6 +96,101 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// ---- This visitor's own demo household ----
+// Each visitor gets a copy of the demo household of their own (its own clock, ledger, and email), so two people
+// using the demo at once never affect each other. The id lives in this tab's sessionStorage, rides along in links
+// between the pages (?household=), and is shared with this visitor's other open tabs over a BroadcastChannel.
+
+const HOUSEHOLD_KEY = 'closed-loop-household';
+const VISITOR_ID = /^demo-[a-z0-9]{10}$/;
+const tabs = typeof BroadcastChannel === 'function' ? new BroadcastChannel('closed-loop-household') : null;
+let currentHousehold = null;
+
+function sessionHousehold() {
+  try {
+    return sessionStorage.getItem(HOUSEHOLD_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function adopt(id) {
+  currentHousehold = id;
+  try {
+    sessionStorage.setItem(HOUSEHOLD_KEY, id);
+  } catch {
+    /* private mode: this page still has it in memory */
+  }
+  // Links to the other page carry the id, so it opens on the same household in a new tab too.
+  for (const a of $$('a[href^="/console/"], a[href^="/simulator/"]')) {
+    const u = new URL(a.getAttribute('href'), location.origin);
+    u.searchParams.set('household', id);
+    a.setAttribute('href', u.pathname + u.search + u.hash);
+  }
+  const here = new URL(location.href);
+  if (here.searchParams.has('household')) {
+    here.searchParams.delete('household');
+    history.replaceState(history.state, '', here.pathname + here.search + here.hash);
+  }
+  return id;
+}
+
+async function householdExists(id) {
+  try {
+    await api(`/api/households/${id}`);
+    return true;
+  } catch (err) {
+    if (err.status === 404) return false;
+    throw err;
+  }
+}
+
+/** Asks this visitor's other open tabs which household they are on (for a page opened by typing its address). */
+function askOtherTabs(ms = 250) {
+  if (!tabs) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const onMessage = (e) => e.data?.type === 'here' && VISITOR_ID.test(e.data.household) && done(e.data.household);
+    const timer = setTimeout(() => done(null), ms);
+    function done(id) {
+      clearTimeout(timer);
+      tabs.removeEventListener('message', onMessage);
+      resolve(id);
+    }
+    tabs.addEventListener('message', onMessage);
+    tabs.postMessage({ type: 'where' });
+  });
+}
+
+tabs?.addEventListener('message', (e) => {
+  if (e.data?.type === 'where' && currentHousehold) tabs.postMessage({ type: 'here', household: currentHousehold });
+});
+
+/** This visitor's demo household: from the link, this tab, another open tab, or a fresh one. Call after ensureAccess. */
+export async function visitorHousehold() {
+  const fromLink = new URL(location.href).searchParams.get('household');
+  for (const id of [fromLink, sessionHousehold()]) if (VISITOR_ID.test(id || '') && (await householdExists(id))) return adopt(id);
+  const sibling = await askOtherTabs();
+  if (sibling && (await householdExists(sibling))) return adopt(sibling);
+  return adopt((await startDemoDay()).householdId);
+}
+
+/** A fresh demo household for this visitor: 7:55 am tomorrow on its own clock. The one it replaces is deleted. */
+export async function startDemoDay() {
+  const previous = currentHousehold;
+  const r = await api('/admin/demo-start', { method: 'POST', body: previous ? { previous } : {} });
+  adopt(r.householdId);
+  if (previous) tabs?.postMessage({ type: 'replaced', from: previous, household: r.householdId });
+  return r;
+}
+
+/** Calls `fn` when another of this visitor's tabs replaces the household this tab is on. */
+export function onHouseholdReplaced(fn) {
+  tabs?.addEventListener('message', (e) => {
+    if (e.data?.type !== 'replaced' || !currentHousehold || e.data.from !== currentHousehold || !VISITOR_ID.test(e.data.household)) return;
+    fn(adopt(e.data.household));
+  });
+}
+
 // ---- Loop glyph ----
 
 const KIND_BY_STATE = {

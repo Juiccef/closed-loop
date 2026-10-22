@@ -55,7 +55,7 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 | Media support (cards) and MCP Apps | One MCP App card renders all eight tool results, including the family summary and the person's own check-in, in a sandboxed iframe with the spec's handshake. | 0:56 |
 | Agent Skills | `skills/closed-loop-checkins/SKILL.md` | 2:38 |
 | Not a single-turn Q&A bot | Answers, deferrals and follow-ups span hours and days; family hear the result later from their own device. | throughout |
-| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent, quiet hours and email cap. | draft scene, not yet in the video |
+| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent and email cap, and emails at the person's own deadline even during quiet hours, because that is what they asked for. | draft scene, not yet in the video |
 
 ### How we built it
 
@@ -64,7 +64,7 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 - **AWS:** Lambda (arm64) behind a Function URL, DynamoDB single table with TTL and Streams, EventBridge Scheduler (minute tick plus keep-warm), SES, Bedrock (Converse with tool use) for the planner and an asynchronous second opinion, all in one SAM template.
 - **Simulated Alexa+ client:** a browser page that is a real MCP client and shows every JSON-RPC message, a planner hop, the MCP App card, a "who is speaking" switch for the person or a family member, and a simulated clock that moves the whole system.
 - **Caregiver console:** Amazon-style app layout with Apple's system type, keyboard-first, status by shape and words, zero axe-core violations on every page in light and dark.
-- **Tests:** 412 in all. A 265-reply fail-closed eval assumes the planner claims `done` for everything and counts both directions: 0 unsafe misses and 0 false alarms (`docs/evals.md`; its first run found 44 failures, which the rules now fix). Also unit, protocol, OAuth, planner and console API tests, a requirement-to-test map for Alexa+ (`docs/alexa-plus-readiness.md`), an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
+- **Tests:** 424 in all. A 265-reply fail-closed eval assumes the planner claims `done` for everything and counts both directions: 0 unsafe misses and 0 false alarms (`docs/evals.md`; its first run found 44 failures, which the rules now fix). Also unit, protocol, OAuth, planner and console API tests, a requirement-to-test map for Alexa+ (`docs/alexa-plus-readiness.md`), an end-to-end replay of the demo that passes locally and on AWS, and three independent MCP clients (browser, MCP Inspector, the official SDK client).
 
 ### Challenges we ran into
 

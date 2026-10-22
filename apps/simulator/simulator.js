@@ -1,11 +1,12 @@
 // Simulated Alexa+ client. The browser is a real MCP client: initialize, tools/list, tools/call over
 // Streamable HTTP. A planner (Bedrock, or rules) stands in for Alexa+'s LLM and picks the tool call.
 
-import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph } from '/shared/app.js';
+import { $, $$, McpClient, SCOPE_NOTICE, SIMULATED_NOTICE, VOICE_TURNS_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph, onHouseholdReplaced, startDemoDay, visitorHousehold } from '/shared/app.js';
 
+// `household` is this visitor's own demo household (see visitorHousehold in /shared/app.js).
 // pending: a set_my_checkin preview waiting for the person's answer (one turn only).
 // mine: the person's own check-ins as MCP last returned them (undefined until looked up).
-const state = { queue: [], current: null, recent: null, household: 'demo', mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana', pending: null, mine: undefined };
+const state = { queue: [], current: null, recent: null, household: null, mcp: null, speak: false, plannerKind: 'rules', loops: new Map(), seenMail: new Set(), cards: new Map(), speaker: 'person', personName: 'Margaret', familyName: 'Dana', pending: null, mine: undefined };
 
 $('#simulated-notice').textContent = SIMULATED_NOTICE;
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -323,13 +324,13 @@ function renderClock(c) {
 }
 
 async function loadClock() {
-  renderClock(await api('/admin/clock'));
+  renderClock(await api(`/admin/clock?household=${state.household}`));
 }
 
 async function moveClock(body, label) {
   $$('.clock-buttons button').forEach((b) => (b.disabled = true));
   try {
-    const r = await api('/admin/clock', { method: 'POST', body });
+    const r = await api(`/admin/clock?household=${state.household}`, { method: 'POST', body });
     const t = r.tick;
     const parts = [];
     if (t.closed) parts.push(`closed ${t.closed} window${t.closed > 1 ? 's' : ''}`);
@@ -374,7 +375,7 @@ async function refresh() {
   const mailEvents = ledger.events.filter((e) => ['alert_sent', 'needs_human_note_sent', 'alert_suppressed', 'alert_failed'].includes(e.type)).slice(0, 6);
   let emails = [];
   try {
-    emails = await api('/admin/emails');
+    emails = await api(`/admin/emails?household=${state.household}`);
   } catch {
     emails = [];
   }
@@ -437,6 +438,15 @@ async function oauthToken(form) {
   traffic({ kind: 'app', tag: 'OAuth', title: `POST /oauth/token (${form.grant_type})`, meta: `HTTP ${res.status} · ${Math.round(performance.now() - t0)} ms`, line: res.ok ? `scope ${body.scope} · expires in ${body.expires_in} s` : body.error, body: { request: { ...form, code: redact(form.code), code_verifier: redact(form.code_verifier), refresh_token: redact(form.refresh_token) }, response: shown } });
   if (!res.ok) throw new Error(`OAuth: ${body.error_description || body.error}`);
   return body;
+}
+
+/** Back to the demo bearer token, which acts only for this visitor's household (after a fresh demo day, say). */
+function useDemoToken(token) {
+  state.mcp.token = token;
+  oauth.refreshToken = null;
+  $('#auth-chip').textContent = 'auth: demo bearer token';
+  $('#link-oauth').textContent = 'Link with OAuth 2.1';
+  $('#link-oauth').disabled = false;
 }
 
 function useTokens(tokens) {
@@ -509,8 +519,8 @@ window.addEventListener('message', (e) => {
 async function main() {
   const config = await getConfig();
   await ensureAccess(config);
-  const demo = await api('/admin/demo-config');
-  state.household = demo.householdId;
+  state.household = await visitorHousehold();
+  const demo = await api(`/admin/demo-config?household=${state.household}`);
   state.plannerKind = demo.planner;
   const view = await api(`/api/households/${state.household}`).catch(() => null);
   if (view) {
@@ -533,9 +543,18 @@ async function main() {
     await finishLinking(returned);
   }
   setInterval(() => {
-    refresh().catch(() => {});
-    loadClock().catch(() => {});
+    refresh().catch(householdGone);
+    loadClock().catch(householdGone);
   }, 5000);
+  // Another of this visitor's tabs started a fresh demo day: follow it there.
+  onHouseholdReplaced(() => location.reload());
+}
+
+let goneShown = false;
+function householdGone(err) {
+  if (err?.status !== 404 || goneShown) return;
+  goneShown = true;
+  caption('system', 'This demo day has ended (each demo household is deleted after 24 hours). Start a fresh demo day to continue.');
 }
 
 const guard = (fn) => async (...args) => {
@@ -566,15 +585,18 @@ $('[data-reset]').addEventListener('click', guard(() => moveClock({ reset: true 
 $('#demo-start').addEventListener(
   'click',
   guard(async () => {
-    const r = await api('/admin/demo-start', { method: 'POST', body: {} });
-    traffic({ kind: 'tick', tag: 'demo', title: 'fresh demo day', meta: r.localNow, body: r });
+    const r = await startDemoDay();
+    traffic({ kind: 'tick', tag: 'demo', title: 'fresh demo day', meta: r.localNow, body: { ...r, mcpToken: r.mcpToken && `${r.mcpToken.slice(0, 12)}…` } });
+    state.household = r.householdId;
+    useDemoToken(r.mcpToken ?? (await api(`/admin/demo-config?household=${state.household}`)).mcpToken);
     state.queue = [];
     state.current = null;
     state.pending = null;
     state.mine = undefined;
     state.loops.clear();
+    goneShown = false;
     $('#captions').innerHTML = '';
-    caption('system', 'New demo day. The plan, consent, and ledger were reset.');
+    caption('system', 'New demo day, in a household of your own. The plan, consent, and ledger start fresh; nobody else’s demo changed.');
     await Promise.all([loadClock(), refresh()]);
   }),
 );

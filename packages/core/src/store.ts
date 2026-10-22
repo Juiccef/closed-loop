@@ -1,4 +1,4 @@
-import type { ClockStore } from './clock';
+import { realNow, type ClockStore } from './clock';
 import {
   DEFAULT_LADDER,
   type AuditEvent,
@@ -10,6 +10,7 @@ import {
   type Occurrence,
   type Utterance,
 } from './model';
+import { isExpired, isVisitorHousehold } from './visitor';
 
 /** A conditional write lost the race: someone else changed the item first. */
 export class ConflictError extends Error {
@@ -19,11 +20,13 @@ export class ConflictError extends Error {
 }
 
 export interface Store extends ClockStore {
+  /** Undefined when absent, or when a visitor household is past its expiry. */
   getHousehold(id: HouseholdId): Promise<Household | undefined>;
-  /** Creates or replaces the household and registers it for the tick. */
+  /** Creates or replaces the household and registers it for the tick. A visitor household's items expire (TTL). */
   putHousehold(household: Household): Promise<void>;
   /** Sets only the given fields (undefined removes a field), so concurrent writers do not clobber each other. */
   updateHousehold(id: HouseholdId, patch: Partial<Omit<Household, 'id'>>): Promise<void>;
+  /** Registered households, without visitor households past their expiry. */
   listHouseholdIds(): Promise<HouseholdId[]>;
 
   /** Newest first. */
@@ -132,16 +135,18 @@ export class MemoryStore implements Store {
   private caps = new Map<string, number>();
   private offsetSeconds = 0;
 
-  async getClockOffsetSeconds() {
-    return this.offsetSeconds;
+  async getClockOffsetSeconds(householdId?: HouseholdId) {
+    const own = householdId && isVisitorHousehold(householdId) ? this.households.get(householdId)?.clockOffsetSeconds : undefined;
+    return own ?? this.offsetSeconds;
   }
-  async setClockOffsetSeconds(seconds: number) {
-    this.offsetSeconds = seconds;
+  async setClockOffsetSeconds(seconds: number, householdId?: HouseholdId) {
+    if (householdId && isVisitorHousehold(householdId)) await this.updateHousehold(householdId, { clockOffsetSeconds: seconds });
+    else this.offsetSeconds = seconds;
   }
 
   async getHousehold(id: HouseholdId) {
     const h = this.households.get(id);
-    return h && clone(h);
+    return h && !isExpired(h, realNow()) ? clone(h) : undefined;
   }
   async putHousehold(household: Household) {
     this.households.set(household.id, clone(household));
@@ -155,6 +160,8 @@ export class MemoryStore implements Store {
     }
   }
   async listHouseholdIds() {
+    // Stands in for DynamoDB TTL: expired visitor households are removed here.
+    for (const h of [...this.households.values()]) if (isExpired(h, realNow())) await this.deleteHousehold(h.id);
     return [...this.households.keys()].sort();
   }
 

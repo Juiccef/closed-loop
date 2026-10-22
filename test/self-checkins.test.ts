@@ -145,16 +145,12 @@ describe('the existing rules still apply', () => {
     expect(live.map((d) => d.self!.by).sort()).toEqual(['09:00', '16:00', '23:00']);
   });
 
-  it('quiet hours: the preview says the email waits, and it does (outside demo mode)', async () => {
+  it('quiet hours do not hold back the person\'s own check-ins: the email goes at the time they chose (outside demo mode)', async () => {
     const { store, mailer, tick } = await demo('2026-10-19 07:00', { demoMode: false });
     setLocal('2026-10-19 20:00');
     const { preview, set } = await setUp(store);
-    expect(preview.say).toContain('Emails wait until quiet hours end at 7 am.');
+    expect(preview.say).not.toContain('quiet hours');
     setLocal('2026-10-19 22:01');
-    await tick();
-    expect(mailer.sent.filter((m) => m.occurrenceId === set.checkin!.occurrenceId)).toHaveLength(0);
-    expect((await store.getOccurrence(H, set.checkin!.occurrenceId))?.alertStatus).toBe('waiting_quiet_hours');
-    setLocal('2026-10-20 07:00');
     await tick();
     expect(mailer.sent.filter((m) => m.occurrenceId === set.checkin!.occurrenceId).map((m) => m.to)).toEqual(['dana@example.com']);
   });

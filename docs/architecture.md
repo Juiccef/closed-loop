@@ -27,7 +27,9 @@ The simulator page must call the MCP endpoint (so the MCP function must allow th
 | Audit event (TTL 90 days) | `H#<id>` | `EVT#<at>#<suffix>` |
 | Daily alert counter (TTL) | `H#<id>` | `CAP#<yyyy-mm-dd>` |
 | Tick registry | `REGISTRY` | `H#<id>` |
-| Simulated clock offset | `CLOCK` | `GLOBAL` |
+| Simulated clock offset (deployment-wide) | `CLOCK` | `GLOBAL` |
+
+A visitor's demo household (`demo-<random>`, see below) keeps its own clock offset on its `META` item, and every one of its items carries a `ttl`.
 
 Every occurrence write is conditional on `version`. A tool call reads the clock, household, consent, check-ins, and ladder in one parallel round trip, then today's occurrences in a second query.
 
@@ -57,7 +59,7 @@ the person cancels their own check-in while its window is open ─▶ CANCELLED 
 - **Never asked.** A person-authored definition (`author: 'person'`) has a phrase, a local deadline, a contact, and `repeat: tonight | daily`. Its window runs from six hours before the deadline to the deadline. `get_due_checkins` skips it. The loop closes when the person speaks first and says the phrase, so it needs no proactive prompt (FRICTION_LOG #4); saying it earlier that day also counts.
 - **Closing it.** `get_my_status` returns `mine`: each check-in with the occurrence that saying the phrase now would close (the open window, else one that closed in the last three hours, else today's next one). The planner sends `record_response` with `done` and the person's words. For these occurrences the safety layer accepts the person's own phrase as the report; a different phrase, no words, or a negated or postponed phrase fail closed: nothing is recorded as an answer and the loop keeps waiting (no re-ask is ever promised, since these are never asked). Crisis and distress wording still win. If the window was never stored yet, `record_response` creates it (DynamoDB only).
 - **Two calls to create one.** The first `set_my_checkin` call validates the draft (lint, consent, the contact must be on the email ladder, at most three live) and returns a spoken preview and a confirm token: an HMAC over the household, the exact draft, and a five-minute expiry, signed with a key derived from the ack-link secret. Nothing is stored. The second call carries only the token and the person's own words, which must be a clear, unhedged yes. The check-in id is derived from the token, so a replayed confirm cannot create a second one. A crisis said while setting one up gets the 911 line and nothing is set.
-- **Same ladder.** A deadline with no record closes as `MISSED` with "no response (not reached)", then the normal ladder: the email goes to the contact the person chose, in the person's name ("Margaret asked Closed Loop to let you know if Margaret hadn't said "good night" by 10 pm. Margaret hasn't yet."), L2 on the second unacknowledged day, acknowledgment, quiet hours, the daily cap, and pause all apply. A late phrase is recorded as after the window and cancels an email not yet sent.
+- **Same ladder.** A deadline with no record closes as `MISSED` with "no response (not reached)", then the normal ladder: the email goes to the contact the person chose, in the person's name ("Margaret asked Closed Loop to let you know if Margaret hadn't said "good night" by 10 pm. Margaret hasn't yet."), L2 on the second unacknowledged day, acknowledgment, the daily cap, and pause all apply. Quiet hours do not: the email goes at the time the person chose, because they asked for it then. A late phrase is recorded as after the window and cancels an email not yet sent.
 - **Ownership.** Family linked accounts get a tool error from `set_my_checkin` and `cancel_my_checkin`; the console API returns 403 for edits or deletes of a person-authored definition. The console shows them as *Set by Margaret* and logs `self_checkin_set` and `self_checkin_cancelled` events. Cancelling marks open windows `CANCELLED` and cancels unsent email.
 
 ## Sending email exactly once
@@ -72,7 +74,20 @@ Tested by running three ticks concurrently (`test/engine.test.ts`) and by a five
 
 ## The simulated clock
 
-There is one `now()`: real time plus an offset stored in the `CLOCK` item. The MCP server, tick, console, and ack page all use it, so moving the clock in the simulator moves the whole system. The admin endpoint runs a tick immediately after a move, which is exactly what the minute schedule does in the background. Acknowledge-link expiry uses real time, not the simulated clock.
+There is one `now()`: real time plus an offset. The MCP server, tick, console, and ack page all use it, so moving the clock moves everything that household sees. The admin endpoint runs a tick immediately after a move, which is exactly what the minute schedule does in the background. Acknowledge-link expiry uses real time, not the simulated clock.
+
+The offset is stored once for the deployment (`CLOCK`), except in a visitor's demo household, which keeps its own on its household record. A tool call gets that for free: the household read it already makes carries the offset, so the hot path is still one parallel round trip.
+
+## Per-visitor demo households
+
+Judges use the hosted demo at the same time, so each visitor gets a copy of the demo household of their own.
+
+- `POST /admin/demo-start` creates `demo-<10 random chars>` from the same seed, sets its clock to 7:55 am tomorrow (household time), and returns its id and an MCP bearer token for it. The token is an HMAC of the household id under the deployment's MCP bearer token (no new secret), and it can only ever act for that one visitor household.
+- The simulator and console keep the id in `sessionStorage`, add it to links between the pages (`?household=`), and share it with the visitor's other open tabs over a `BroadcastChannel`, so a console opened in a new tab shows the same household. **Start a fresh demo day** deletes the visitor's previous household.
+- `/admin/clock?household=<id>` moves only that household's clock and ticks only that household. Without a household it moves the deployment-wide clock, which the shared `demo` household follows, and ticks the households on it. The minute tick evaluates every household at its own time, eight at a time.
+- Every visitor household expires 24 hours after it starts. Its record and registry entry get a `ttl` at that moment and every other item a `ttl` 24 hours after it is written. DynamoDB TTL deletes lazily, so reads treat the household as gone from its expiry: the console answers 404, the tick skips it, and nothing more is emailed.
+- Each household keeps its own daily email cap, on its own date. Visitor households also share one deployment-wide budget of 100 check-in emails per real day, which protects the SES sending quota; family notes about distress are never held by it.
+- The shared `demo` household, the static bearer token (MCP Inspector, scripts), and OAuth account linking are unchanged. A link code made from a visitor's console links to that visitor's household.
 
 ## Planner and classifier (Bedrock)
 

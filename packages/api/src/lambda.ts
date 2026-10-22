@@ -1,5 +1,5 @@
 // AWS entry point for the web function: MCP (/mcp), console API, acknowledge links, static pages.
-import { ackUrlBuilder, now, runTick, seedDemoHousehold } from '@closed-loop/core';
+import { ackUrlBuilder, now, runTick, seedDemoHousehold, verifyVisitorToken, visitorToken } from '@closed-loop/core';
 import { createOAuth } from '@closed-loop/mcp-server';
 import { urlEventHandler, type FunctionUrlEvent } from '@closed-loop/mcp-server/src/lambda-adapter';
 import { DynamoStore } from '@closed-loop/store-dynamo';
@@ -41,14 +41,23 @@ await store.getClockOffsetSeconds().catch(() => 0);
 const handler = urlEventHandler(
   createWebHandler(
     store,
-    { bearerTokens: { [MCP_TOKEN]: 'demo' }, allowedOrigins: [], allowSameOrigin: true, resourceUrl: '', includeWwwAuthenticate: false, oauth },
+    {
+      bearerTokens: { [MCP_TOKEN]: 'demo' },
+      householdBearer: (bearer) => verifyVisitorToken(MCP_TOKEN, bearer),
+      allowedOrigins: [],
+      allowSameOrigin: true,
+      resourceUrl: '',
+      includeWwwAuthenticate: false,
+      oauth,
+    },
     {
       store,
       adminToken: env('ADMIN_TOKEN'),
       ackSecret: ACK_SECRET,
-      runTick: (origin) => runTick(store, { mailer, ackUrl: ackUrlBuilder(origin, ACK_SECRET) }),
-      seed: async () =>
-        seedDemoHousehold(store, { now: await now(store), l1Email: env('SEED_L1_EMAIL'), l2Email: env('SEED_L2_EMAIL'), demoMode: true }),
+      runTick: (origin, householdIds) => runTick(store, { mailer, ackUrl: ackUrlBuilder(origin, ACK_SECRET) }, householdIds),
+      seed: async (visitor) =>
+        seedDemoHousehold(store, { now: visitor?.now ?? (await now(store)), l1Email: env('SEED_L1_EMAIL'), l2Email: env('SEED_L2_EMAIL'), demoMode: true, ...visitor }),
+      householdToken: (householdId) => visitorToken(MCP_TOKEN, householdId),
       planner: (body) => bedrockOrRulesPlanner(body),
       publicConfig: () => ({ mode: 'aws', householdId: 'demo' }),
       demoConfig: (origin) => ({

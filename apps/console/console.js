@@ -1,8 +1,9 @@
 // Caregiver console. Plain HTML forms with labels, errors tied to fields, and a polite status region.
 
-import { $, $$, SCOPE_NOTICE, SIMULATED_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph, loopKind } from '/shared/app.js';
+import { $, $$, SCOPE_NOTICE, SIMULATED_NOTICE, api, ensureAccess, esc, getConfig, loopGlyph, loopKind, onHouseholdReplaced, visitorHousehold } from '/shared/app.js';
 
-const H = 'demo';
+/** This visitor's own demo household (see visitorHousehold in /shared/app.js). */
+let H = null;
 const state = { view: null, ledger: null, contactsRendered: false, editing: new Set(), kinds: new Map() };
 
 $('#scope-notice').textContent = SCOPE_NOTICE;
@@ -532,6 +533,12 @@ async function load(force = false, contactsToo = false) {
 async function main() {
   const config = await getConfig();
   await ensureAccess(config);
+  H = await visitorHousehold();
+  // A fresh demo day started in another of this visitor's tabs: show that one.
+  onHouseholdReplaced((id) => {
+    H = id;
+    load(true, true).catch(() => {});
+  });
   try {
     await load(true, true);
   } catch (err) {

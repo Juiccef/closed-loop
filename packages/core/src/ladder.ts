@@ -1,12 +1,13 @@
 // The tick: closes windows, decides who to tell, and sends email. It never speaks to the person.
 // Every alert is claimed with a conditional write before sending, so overlapping ticks cannot double-send.
 
-import { addDays, datesBetween, inLocalRange, localDate, localTime, minutesBetween } from './clock';
+import { addDays, datesBetween, inLocalRange, localDate, localTime, minutesBetween, realNow } from './clock';
 import { mutateOccurrence } from './checkins';
 import type { CheckinDefinition, Contact, HouseholdId, Occurrence, OccurrenceState, OpenReason } from './model';
 import { isOwnCheckin, loadPlan, materialize, type Plan } from './plan';
 import type { Store } from './store';
 import { ledgerLine, missedEmail, needsHumanEmail, ownMissedEmail, type EmailContent } from './wording';
+import { VISITOR_EMAIL_BUDGET_ID, VISITOR_EMAILS_PER_DAY, isVisitorHousehold } from './visitor';
 
 export interface OutgoingEmail extends EmailContent {
   to: string;
@@ -42,6 +43,8 @@ export interface TickOptions {
   /** Builds the signed acknowledge URL for one contact. */
   ackUrl: (householdId: HouseholdId, occurrenceId: string, contactId: string) => string;
   maxAlertAttempts?: number;
+  /** Check-in emails from all visitor demo households together, per real (UTC) day. */
+  visitorEmailsPerDay?: number;
 }
 
 export interface TickReport {
@@ -65,16 +68,26 @@ const REASON_BY_STATE: Partial<Record<OccurrenceState, OpenReason>> = {
   DECLINED: 'declined',
 };
 
-export async function runTick(store: Store, opts: TickOptions): Promise<TickReport> {
+const TICK_CONCURRENCY = 8;
+
+/**
+ * Ticks every registered household, or only `householdIds`. Each household is evaluated at its own time
+ * (a visitor household has its own clock), a few at a time so many visitor households still fit in a minute.
+ */
+export async function runTick(store: Store, opts: TickOptions, householdIds?: HouseholdId[]): Promise<TickReport> {
   const report: TickReport = { households: 0, closed: 0, alertsSent: 0, alertsSuppressed: 0, notesSent: 0, errors: [] };
-  for (const id of await store.listHouseholdIds()) {
-    try {
-      await tickHousehold(store, id, opts, report);
-      report.households++;
-    } catch (err) {
-      report.errors.push(`${id}: ${(err as Error).message}`);
+  const queue = [...(householdIds ?? (await store.listHouseholdIds()))];
+  const worker = async () => {
+    for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+      try {
+        await tickHousehold(store, id, opts, report);
+        report.households++;
+      } catch (err) {
+        report.errors.push(`${id}: ${(err as Error).message}`);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(TICK_CONCURRENCY, queue.length) }, worker));
   return report;
 }
 
@@ -225,7 +238,8 @@ async function deliverAlert(
 ): Promise<void> {
   const id = plan.household.id;
   const nowIso = now.toISOString();
-  if (quietNow(plan, now)) {
+  // The person's own check-ins email at the time they chose, as they asked; quiet hours hold back family check-ins only.
+  if (!isOwnCheckin(def) && quietNow(plan, now)) {
     if (occ.alertStatus !== 'waiting_quiet_hours') {
       await mutateOccurrence(store, id, occ.id, (cur) => (cur.alertStatus === occ.alertStatus ? { ...cur, alertStatus: 'waiting_quiet_hours', updatedAt: nowIso } : null), occ);
     }
@@ -241,9 +255,15 @@ async function deliverAlert(
   );
   if (!claimed) return;
 
-  if (!(await store.tryConsumeAlert(id, localDate(now, plan.household.timezone), plan.ladder.dailyAlertCap))) {
+  // Visitor households share one deployment-wide daily budget (checked first, so the household's own count
+  // stays exact), then each household's own cap applies on its own date.
+  const overBudget =
+    isVisitorHousehold(id) &&
+    !(await store.tryConsumeAlert(VISITOR_EMAIL_BUDGET_ID, new Date(realNow()).toISOString().slice(0, 10), opts.visitorEmailsPerDay ?? VISITOR_EMAILS_PER_DAY));
+  if (overBudget || !(await store.tryConsumeAlert(id, localDate(now, plan.household.timezone), plan.ladder.dailyAlertCap))) {
     await mutateOccurrence(store, id, occ.id, (cur) => (cur.alertStatus === 'sending' ? { ...cur, alertStatus: 'suppressed_cap', updatedAt: nowIso } : null), claimed);
-    await store.appendEvent({ householdId: id, at: nowIso, type: 'alert_suppressed', occurrenceId: occ.id, detail: `${def.label}: daily email limit reached; shown in the console only.` });
+    const why = overBudget ? 'demo email limit for today reached' : 'daily email limit reached';
+    await store.appendEvent({ householdId: id, at: nowIso, type: 'alert_suppressed', occurrenceId: occ.id, detail: `${def.label}: ${why}; shown in the console only.` });
     report.alertsSuppressed++;
     return;
   }

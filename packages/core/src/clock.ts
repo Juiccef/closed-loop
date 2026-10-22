@@ -1,9 +1,12 @@
-// The one clock. Every component asks `now()` for the time: real time plus a simulated offset
-// (demo only), stored once for the whole deployment so the MCP server, tick, and console agree.
+// The one clock. Every component asks `now()` for the time: real time plus a simulated offset (demo only),
+// so the MCP server, tick, and console agree. The offset is stored once for the deployment; a per-visitor
+// demo household keeps its own offset instead, so one visitor moving time never moves anyone else's.
 
 export interface ClockStore {
-  getClockOffsetSeconds(): Promise<number>;
-  setClockOffsetSeconds(seconds: number): Promise<void>;
+  /** The household's own offset when it has one, otherwise the deployment-wide offset. */
+  getClockOffsetSeconds(householdId?: string): Promise<number>;
+  /** With a household: that household's own offset. Without: the deployment-wide offset. */
+  setClockOffsetSeconds(seconds: number, householdId?: string): Promise<void>;
 }
 
 let realTime: () => number = () => Date.now();
@@ -13,19 +16,28 @@ export function setRealTimeSource(fn: () => number): void {
   realTime = fn;
 }
 
-export async function now(store: ClockStore): Promise<Date> {
-  const offset = await store.getClockOffsetSeconds();
-  return new Date(realTime() + offset * 1000);
+/** Real time in milliseconds (no simulated offset), from the same source the clock uses. */
+export function realNow(): number {
+  return realTime();
 }
 
-export async function advanceClock(store: ClockStore, seconds: number): Promise<number> {
-  const next = (await store.getClockOffsetSeconds()) + seconds;
-  await store.setClockOffsetSeconds(next);
+/** The simulated time for a given offset. */
+export function clockAt(offsetSeconds: number): Date {
+  return new Date(realTime() + offsetSeconds * 1000);
+}
+
+export async function now(store: ClockStore, householdId?: string): Promise<Date> {
+  return clockAt(await store.getClockOffsetSeconds(householdId));
+}
+
+export async function advanceClock(store: ClockStore, seconds: number, householdId?: string): Promise<number> {
+  const next = (await store.getClockOffsetSeconds(householdId)) + seconds;
+  await store.setClockOffsetSeconds(next, householdId);
   return next;
 }
 
-export async function resetClock(store: ClockStore): Promise<void> {
-  await store.setClockOffsetSeconds(0);
+export async function resetClock(store: ClockStore, householdId?: string): Promise<void> {
+  await store.setClockOffsetSeconds(0, householdId);
 }
 
 // ---- Time zone helpers (Intl only, no dependencies) ----

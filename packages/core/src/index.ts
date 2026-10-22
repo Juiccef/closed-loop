@@ -11,3 +11,4 @@ export * from './self-checkins';
 export * from './ladder';
 export * from './seed';
 export * from './oauth-codes';
+export * from './visitor';

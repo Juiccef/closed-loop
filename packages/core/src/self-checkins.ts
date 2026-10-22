@@ -382,8 +382,6 @@ export async function setMyCheckin(store: Store, householdId: HouseholdId, input
       ? `Every day, if you haven't said ${phrase} by ${time}, I'll email ${contact.name}.`
       : `If you haven't said ${phrase} by ${time} ${whenWord(deadline, now, tz)}, I'll email ${contact.name}.`,
   ];
-  const q = plan.ladder.quietHours;
-  if (!plan.household.demoMode && q && inLocalRange(by, q.start, q.end)) parts.push(`Emails wait until quiet hours end at ${spokenClock(q.end)}.`);
   if (ctx.status === 'paused' && plan.household.pausedUntil) parts.push(`Check-ins are paused until ${spokenTime(new Date(plan.household.pausedUntil), tz)}, so nothing is sent before then.`);
   parts.push('Should I set that up?');
   return {

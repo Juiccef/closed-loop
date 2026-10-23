@@ -48,9 +48,16 @@ Parameters:
     Type: String
     Default: ''
     Description: Bedrock model or inference profile for the planner. Empty means the rules planner.
+  AlexaSkillId:
+    Type: String
+    Default: ''
+    Description: >-
+      Skill ID of the classic Alexa custom skill for a real Echo (developer console, Copy Skill ID). Empty means
+      no skill function.
 
 Conditions:
   HasBedrock: !Not [!Equals [!Ref BedrockModelId, '']]
+  HasAlexaSkill: !Not [!Equals [!Ref AlexaSkillId, '']]
 
 Globals:
   Function:
@@ -186,6 +193,29 @@ Resources:
               Filters:
                 - Pattern: '{"eventName":["INSERT"],"dynamodb":{"NewImage":{"SK":{"S":[{"prefix":"UTT#"}]}}}}'
 
+  # Classic Alexa custom skill (development stage, the developer's own Echo): a thin MCP client of WebFunction's
+  # /mcp for the shared demo household. Not an Alexa+ add-on (that tooling is partner-only). Only Alexa can invoke
+  # it, and only for this skill ID (the trigger here, and a check in code).
+  SkillFunction:
+    Type: AWS::Serverless::Function
+    Condition: HasAlexaSkill
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-alexa-skill
+      Description: Classic Alexa skill for a real Echo - calls the Closed Loop MCP server (not an Alexa+ add-on)
+      CodeUri: ../dist/skill/
+      MemorySize: 1024
+      Timeout: 8
+      Environment:
+        Variables:
+          ALEXA_SKILL_ID: !Ref AlexaSkillId
+          MCP_URL: !Sub '${WebFunctionUrl.FunctionUrl}mcp'
+          MCP_BEARER_TOKEN: !Ref McpBearerToken
+      Events:
+        Alexa:
+          Type: AlexaSkill
+          Properties:
+            SkillId: !Ref AlexaSkillId
+
   WebLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -201,6 +231,12 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${ClassifierFunction}
       RetentionInDays: 7
+  SkillLogGroup:
+    Type: AWS::Logs::LogGroup
+    Condition: HasAlexaSkill
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${SkillFunction}
+      RetentionInDays: 7
 
 Outputs:
   WebUrl:
@@ -214,3 +250,7 @@ Outputs:
     Value: !Ref WebFunction
   TickFunctionName:
     Value: !Ref TickFunction
+  SkillFunctionArn:
+    Condition: HasAlexaSkill
+    Description: Alexa developer console, Build > Endpoint > AWS Lambda ARN > Default Region
+    Value: !GetAtt SkillFunction.Arn

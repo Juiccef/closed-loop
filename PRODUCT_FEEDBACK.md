@@ -6,7 +6,7 @@ One section per tool, API, or SDK used: what it was used for, what worked, what 
 
 | Request | Rating | Why |
 |---|---|---|
-| A consent-gated proactive primitive for MCP add-ons (scheduled prompt, or a tool result that creates a native reminder or routine step) | **Critical** | A daily check-in for someone who lives alone cannot be started by the service. Today the person or a household routine has to start every turn (FRICTION_LOG #4). |
+| A consent-gated proactive primitive for MCP add-ons (scheduled prompt, or a tool result that creates a native reminder or routine step) | **Critical** | A daily check-in for someone who lives alone cannot be started by the service. Today the person or a household routine has to start every turn (FRICTION_LOG #4). Classic custom skills already have the Reminders API for this, which the Echo Show skill uses ([docs/echo-show.md](docs/echo-show.md)). |
 | Let an add-on declare a few consent-gated phrases it wants to hear (for example "good night"), and document how utterances are routed to add-ons | Important | The person's own check-ins close when the person says their phrase; whether a bare "good night" ever reaches an add-on is undocumented (FRICTION_LOG #14). |
 | A public, rate-limited Alexa+ web simulator or recorded-traffic conformance test for non-partners | Important | Partner-only tooling means hackathon entrants cannot test against the real client (FRICTION_LOG #6). |
 | A documented list of request headers and supported protocol versions for the Alexa+ MCP client | Important | Version examples disagree (2025-03-26 vs 2025-11-25) and `Accept` / `MCP-Protocol-Version` behavior is undocumented (FRICTION_LOG #1, #3). |
@@ -30,6 +30,14 @@ One section per tool, API, or SDK used: what it was used for, what worked, what 
 - **What needs work:** A strict `Accept` check returns 406 for clients that send only `application/json`, even in JSON-only mode. Host and Origin validation options are deprecated in favor of "external middleware" with no example. The 1.x vs 2.x split (and the 2026 spec dropping `initialize`) makes it unclear which line to pin for clients that still handshake.
 - **Onboarding:** About 30 minutes from install to a passing curl handshake, mostly reading `.d.ts` files.
 - **Would build again:** Yes.
+
+## Alexa Skills Kit (classic custom skill, `ask-sdk-core` 2.14.0, Reminders API, APL)
+
+- **Used for:** Running Closed Loop on a real Echo Show as a development-stage custom skill: a catch-all slot, the Reminders API (`SCHEDULED_RELATIVE` and daily `SCHEDULED_ABSOLUTE`), the permission card, and an APL card with an AVG ring.
+- **What worked:** `ask-sdk-model` types cover the Reminders request shapes, so the request is type-checked against Amazon's model. Swapping the SDK's `ApiClient` for a fake made the Reminders API easy to test. The SAM `AlexaSkill` event sets the skill ID on the Lambda permission in one line. Leaving `shouldEndSession` unset keeps an APL card on screen without opening the microphone.
+- **What needs work:** `withSkillId` skips the check when the ID is unset (FRICTION_LOG #15). There is no non-deprecated way to tell whether the Reminders permission is granted, and the refusal code is undocumented (FRICTION_LOG #16). The Reminders reference gives two different success codes.
+- **Onboarding:** About an hour from reading the docs to passing handler tests; console and device steps still to do on the real Echo.
+- **Would build again:** Yes, for anything that needs Alexa to speak first.
 
 ## MCP Inspector (`@modelcontextprotocol/inspector` 2.11.0, CLI mode)
 

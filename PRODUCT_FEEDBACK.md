@@ -33,10 +33,10 @@ One section per tool, API, or SDK used: what it was used for, what worked, what 
 
 ## Alexa Skills Kit (classic custom skill, `ask-sdk-core` 2.14.0, Reminders API, APL)
 
-- **Used for:** Running Closed Loop on a real Echo Show as a development-stage custom skill: a catch-all slot, the Reminders API (`SCHEDULED_RELATIVE` and daily `SCHEDULED_ABSOLUTE`), the permission card, and an APL card with an AVG ring.
+- **Used for:** Running Closed Loop on Alexa as a development-stage custom skill, tested in the Alexa developer console simulator and set up for an Echo Show ([docs/echo-show.md](docs/echo-show.md)): a catch-all slot, the Reminders API (`SCHEDULED_RELATIVE` and daily `SCHEDULED_ABSOLUTE`), the permission card, and an APL card with an AVG ring.
 - **What worked:** `ask-sdk-model` types cover the Reminders request shapes, so the request is type-checked against Amazon's model. Swapping the SDK's `ApiClient` for a fake made the Reminders API easy to test. The SAM `AlexaSkill` event sets the skill ID on the Lambda permission in one line. Leaving `shouldEndSession` unset keeps an APL card on screen without opening the microphone.
 - **What needs work:** `withSkillId` skips the check when the ID is unset (FRICTION_LOG #15). There is no non-deprecated way to tell whether the Reminders permission is granted, and the refusal code is undocumented (FRICTION_LOG #16). The Reminders reference gives two different success codes.
-- **Onboarding:** About an hour from reading the docs to passing handler tests; console and device steps still to do on the real Echo.
+- **Onboarding:** About an hour from reading the docs to passing handler tests, then the skill ran in the Alexa developer console simulator (shown in the demo video at 0:29).
 - **Would build again:** Yes, for anything that needs Alexa to speak first.
 
 ## MCP Inspector (`@modelcontextprotocol/inspector` 2.11.0, CLI mode)

@@ -27,12 +27,12 @@ ${arrow(740, 210, 848, 455, true)}
 </svg></div></body></html>`;
 
 export const endCardHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
-body{margin:0;height:100vh;display:grid;place-items:center;background:#f2f3f5;color:#0f141a;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased}
-main{text-align:center;max-width:980px;padding:0 40px}svg{width:96px;height:96px}
-circle{fill:none;stroke:#037f0c;stroke-width:5;stroke-linecap:round}
-h1{font-size:76px;font-weight:700;letter-spacing:-.03em;margin:18px 0 6px}
-.lede{font-size:30px;color:#5b6573;margin:0 0 30px}
-.url{font-size:28px;font-weight:600;color:#065bb0;margin:0 0 34px}.n{font-size:17px;color:#5b6573;margin:6px 0}
+body{margin:0;height:100vh;display:grid;place-items:center;background:#0b0e12;color:#f2f3f5;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased}
+main{text-align:center;max-width:1000px;padding:0 40px}svg{width:96px;height:96px}
+circle{fill:none;stroke:#4cc35a;stroke-width:5;stroke-linecap:round}
+h1{font-size:84px;font-weight:700;letter-spacing:-.035em;margin:22px 0 10px}
+.lede{font-size:30px;color:#b6bec9;margin:0 auto 30px;max-width:820px;text-wrap:balance}
+.url{font-size:28px;font-weight:600;color:#7ab8f3;margin:0 0 36px}.n{font-size:17px;color:#8d99a8;margin:6px 0}
 </style></head><body><main><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="14"/></svg><h1>Closed Loop</h1>
 <p class="lede">Daily check-ins that close the loop, for people living alone and the families who look after them.</p><p class="url">github.com/Juiccef/closed-loop</p>
 <p class="n">Simulated Alexa+ client. Not Amazon software. The MCP server is real.</p>
@@ -46,6 +46,24 @@ h1{font-size:64px;font-weight:600;letter-spacing:-.025em;margin:0 0 22px;opacity
 p{font-size:28px;line-height:1.45;color:#b6bec9;margin:0 auto;max-width:760px;text-wrap:balance;opacity:0;animation:in 1.4s 1.6s cubic-bezier(.2,.8,.2,1) forwards}
 @keyframes in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 </style></head><body><main><h1>For my grandmother.</h1><p>She had dementia. This is what I wish we&rsquo;d had while she still lived at home.</p></main></body></html>`;
+
+// Scene 2: the title. Only the mark and the name. The recorder sets data-step: 1 the ring draws but stays open
+// ("it never learns whether the loop closed"), 2 it closes and the name appears ("Closed Loop is...").
+export const titleHtml = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;height:100vh;background:#0b0e12;color:#f2f3f5;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;display:grid;place-items:center;overflow:hidden}
+main{display:flex;flex-direction:column;align-items:center;gap:40px;animation:drift 18s linear forwards}
+@keyframes drift{from{transform:scale(1)}to{transform:scale(1.05)}}
+svg{width:220px;height:220px;overflow:visible}
+circle{fill:none;stroke-width:5;stroke-linecap:round}
+.track{stroke:#1d232b}
+.arc{stroke:#5aa7f0;stroke-dasharray:0 100;transition:stroke-dasharray 2.4s cubic-bezier(.45,0,.2,1),stroke 1s ease}
+.dot{fill:#4cc35a;opacity:0;transform-origin:20px 20px;transform:scale(.3);transition:opacity .6s 1.3s ease,transform .6s 1.3s cubic-bezier(.2,.8,.2,1)}
+body[data-step="1"] .arc{stroke-dasharray:78 100}
+body[data-step="2"] .arc{stroke-dasharray:100 0;stroke:#4cc35a;transition:stroke-dasharray 1.4s cubic-bezier(.45,0,.2,1),stroke 1s .4s ease}
+body[data-step="2"] .dot{opacity:1;transform:scale(1)}
+h1{font-size:104px;font-weight:700;letter-spacing:-.035em;margin:0;opacity:0;transform:translateY(12px);transition:opacity 1.4s .9s cubic-bezier(.2,.8,.2,1),transform 1.4s .9s cubic-bezier(.2,.8,.2,1)}
+body[data-step="2"] h1{opacity:1;transform:none}
+</style></head><body><main><svg viewBox="0 0 40 40" aria-hidden="true"><circle class="track" cx="20" cy="20" r="15"/><circle class="arc" cx="20" cy="20" r="15" pathLength="100" transform="rotate(-90 20 20)"/><circle class="dot" cx="20" cy="20" r="4.5"/></svg><h1>Closed Loop</h1></main></body></html>`;
 
 // Scene 1: the problem, each number with its source (verified in docs/impact.md). Steps are revealed by the recorder.
 const stat = (n: number, big: string, label: string, source: string) =>
@@ -69,7 +87,10 @@ ${stat(2, '<small>Nearly</small>13 million', 'family members and friends give un
 export const skillHtml = (markdown: string) => {
   const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
   const lines = markdown.split('\n');
-  const pick = [...lines.slice(0, 4), '', ...lines.slice(lines.findIndex((l) => l.startsWith('## Words you never use')), lines.findIndex((l) => l.startsWith('## Status and pausing')))];
+  // The frontmatter and one rule: the words the agent must never use (up to the next heading).
+  const from = lines.findIndex((l) => l.startsWith('## Words you never use'));
+  const to = lines.findIndex((l, i) => i > from && l.startsWith('## '));
+  const pick = [...lines.slice(0, lines.indexOf('---', 1) + 1), '', ...lines.slice(from, to < 0 ? undefined : to)];
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 body{margin:0;height:100vh;background:#f2f3f5;color:#0f141a;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;-webkit-font-smoothing:antialiased;display:grid;place-items:center}
 .doc{width:1180px;background:#fff;border-radius:16px;box-shadow:0 1px 2px rgba(15,20,26,.05),0 2px 12px -2px rgba(15,20,26,.08);overflow:hidden}

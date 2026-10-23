@@ -37,6 +37,13 @@ const scenes = order.map((item) => {
   return s;
 });
 
+/** A short dip to black between scenes; a longer fade at the very start and end. */
+function fadesFor(dur: number, first: boolean, last: boolean): string {
+  const inD = first ? 0.6 : 0.3;
+  const outD = last ? 1.2 : 0.3;
+  return `fade=t=in:st=0:d=${inD},fade=t=out:st=${(dur - outD).toFixed(2)}:d=${outD}`;
+}
+
 const ffmpeg = (args: string[]) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
 const delayMs = Math.round(marks.audioDelay * 1000);
 const parts: string[] = [];
@@ -47,14 +54,16 @@ for (const [i, item] of scenes.entries()) {
   if ('ready' in item) {
     // A ready-made 1920x1080 segment (the Echo Show hero): re-encoded with the same settings so the parts join cleanly.
     const out = join(OUT, `part-${i}.mp4`);
-    ffmpeg(['-i', item.ready, '-vf', 'fps=30,scale=1920:1080,setsar=1,format=yuv420p', '-af', 'aresample=48000', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-r', '30', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', out]);
+    const len = probe(item.ready);
+    const vf = `fps=30,scale=1920:1080,setsar=1,${fadesFor(len, first, last)},format=yuv420p`;
+    ffmpeg(['-i', item.ready, '-vf', vf, '-af', 'aresample=48000', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-r', '30', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2', out]);
     parts.push(out);
     console.log(`segment ${item.ready.replace(ROOT + '/', '')}: ${probe(out).toFixed(1)} s`);
     continue;
   }
   const s = item;
   const dur = +(s.end - s.start).toFixed(3);
-  const fades = [first ? 'fade=t=in:st=0:d=0.6' : '', last ? `fade=t=out:st=${(dur - 1.2).toFixed(2)}:d=1.2` : ''].filter(Boolean).join(',');
+  const fades = fadesFor(dur, first, last);
   const video = `[0:v]trim=start=${s.start.toFixed(3)}:end=${s.end.toFixed(3)},setpts=PTS-STARTPTS,fps=30,scale=1920:1080:flags=lanczos,setsar=1${fades ? `,${fades}` : ''},format=yuv420p[v]`;
   // Scene 0 (the opening card) has no narration: lay silence under it.
   const silent = s.n === 0;

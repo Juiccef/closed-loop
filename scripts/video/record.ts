@@ -10,7 +10,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium, type Locator, type Page } from 'playwright';
 import { ackUrlBuilder } from '@closed-loop/core';
-import { architectureHtml, dedicationHtml, endCardHtml, problemHtml, skillHtml } from './slides';
+import { architectureHtml, dedicationHtml, endCardHtml, problemHtml, skillHtml, titleHtml } from './slides';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const OUT = join(ROOT, 'video', 'out');
@@ -199,7 +199,7 @@ await setupVideo?.delete();
 // ---- Scene 0: dedication (on screen only, no narration); Scene 1: the problem, in sourced numbers; Scene 2: landing ----
 await newClip();
 await page.setContent(dedicationHtml, { waitUntil: 'networkidle' });
-pos = { x: 1500, y: 820 };
+pos = { x: 1900, y: 1060 }; // off screen: no cursor on the opening slides
 await begin(0);
 await at(DEDICATION_SECONDS);
 current.scenes.at(-1)!.end = (Date.now() - pageT0) / 1000;
@@ -210,15 +210,14 @@ for (const [t, step] of [[0.4, 1], [6.1, 2]] as const) {
   await page.evaluate((n) => (document.body.dataset.step = String(n)), step);
 }
 await end(1, 0.9);
-await page.goto(`${BASE}/`);
-await page.waitForLoadState('load');
+await page.setContent(titleHtml, { waitUntil: 'networkidle' });
+await page.mouse.move(1900, 1060); // keep the cursor out of the title
 await begin(2);
-await at(1.2);
-await moveTo(1180, 300, 40);
-await at(9.5);
-await point(page.locator('.door', { hasText: 'Simulated client' }));
-await at(12.8);
-await point(page.locator('.door', { hasText: 'Caregiver console' }));
+for (const [t, step] of [[0.5, 1], [5.6, 2]] as const) {
+  await at(t);
+  await page.evaluate((n) => (document.body.dataset.step = String(n)), step);
+}
+pos = { x: 1900, y: 1060 };
 await end(2);
 await closeClip('clip-1');
 

@@ -12,3 +12,11 @@ video/out/
 
 # Impeccable review captures (regenerated)
 .impeccable/review/
+
+# Echo Show phone footage (large) and the hero segment built from it
+video/echo/build/
+video/echo/*.mov
+video/echo/*.MOV
+video/echo/*.mp4
+video/echo/*.MP4
+video/echo/*.m4v

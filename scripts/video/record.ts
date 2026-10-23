@@ -34,7 +34,7 @@ const ACK_SECRET = LOCAL ? 'local-dev-ack-secret' : env.ACK_LINK_SECRET!;
 
 const AUDIO_DELAY = 0.3; // narration starts this long after each scene begins
 const DEDICATION_SECONDS = 6.5; // scene 0: the opening card, silent
-const durations = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) =>
+const durations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) =>
   Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(NARRATION, `scene-${n}.mp3`)], { encoding: 'utf8' }).trim()),
 );
 console.log(`narration: ${durations.map((d) => d.toFixed(1)).join(' + ')} = ${durations.reduce((a, b) => a + b, 0).toFixed(1)} s`);
@@ -162,35 +162,26 @@ async function simulatorReady() {
 
 // ---- Setup (not part of the video) ----
 
+// The access code comes from .env (never printed). It is in session storage before any page script runs, so the
+// access dialog never appears and nobody has to type it.
+await context.addInitScript({
+  content: `try { if (location.origin === ${JSON.stringify(ORIGIN)}) sessionStorage.setItem('closed-loop-access-code', ${JSON.stringify(ADMIN)}); } catch (e) {}`,
+});
 await newClip();
 await page.goto(`${BASE}/simulator/`);
-const dialog = page.locator('.access-dialog');
-// The dialog appears only after the page has checked the stored code (a cold start can take seconds), so wait
-// for whichever comes first: the dialog, or a simulator that is already connected.
-const first = await Promise.race([
-  dialog.waitFor({ state: 'visible', timeout: 90_000 }).then(() => 'dialog' as const, () => 'none' as const),
-  page
-    .waitForFunction(() => Array.from(document.querySelectorAll('#traffic .t-method')).some((e) => e.textContent?.includes('tools/list')), null, { timeout: 90_000 })
-    .then(() => 'ready' as const, () => 'none' as const),
-]);
-if (first === 'dialog') {
-  console.log('\n>>> Type the access code in the browser window and press Continue. Waiting…\n');
-  await dialog.waitFor({ state: 'detached', timeout: 10 * 60_000 });
-}
 await simulatorReady();
-// Carry the access code to the scene tabs, as a browser does for a link opened in a new tab.
-const code = await page.evaluate(() => sessionStorage.getItem('closed-loop-access-code'));
-if (code) {
-  await context.addInitScript({
-    content: `try { if (location.origin === ${JSON.stringify(ORIGIN)}) sessionStorage.setItem('closed-loop-access-code', ${JSON.stringify(code)}); } catch (e) {}`,
-  });
-}
 await page.click('#demo-start');
 await page.waitForFunction(() => /7:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
 await page.click('[data-adv="3600"]');
 await page.waitForFunction(() => /8:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
+// Each visitor gets a demo household of their own; every scene tab opens on this one.
+const HID = await page.evaluate(() => sessionStorage.getItem('closed-loop-household'));
+if (!HID) throw new Error('the simulator did not report its demo household');
+await context.addInitScript({
+  content: `try { if (location.origin === ${JSON.stringify(ORIGIN)}) sessionStorage.setItem('closed-loop-household', ${JSON.stringify(HID)}); } catch (e) {}`,
+});
 const setupVideo = page.video();
-await page.close(); // setup tab (includes typing the access code): its recording is deleted
+await page.close(); // setup tab: its recording is deleted
 await setupVideo?.delete();
 
 // ---- Scene 0: dedication (on screen only, no narration); Scene 1: the problem, in sourced numbers; Scene 2: landing ----
@@ -221,7 +212,7 @@ await closeClip('clip-1');
 
 // ---- Scene 3: console (contact rows with email addresses are never on screen) ----
 await newClip();
-await page.goto(`${BASE}/console/#checkins`);
+await page.goto(`${BASE}/console/?household=${HID}#checkins`);
 await page.locator('.checkin[data-id="morning"]').waitFor();
 await wait(800);
 await begin(3);
@@ -285,13 +276,13 @@ await begin(6);
 await at(0.4);
 await click(page.locator('[data-adv="86400"]'));
 await page.locator('#mail li .subj').first().waitFor({ timeout: 20_000 });
-const ledger = (await (await fetch(`${BASE}/api/households/demo/ledger?days=2`, { headers: { authorization: `Bearer ${ADMIN}` } })).json()) as {
+const ledger = (await (await fetch(`${BASE}/api/households/${HID}/ledger?days=2`, { headers: { authorization: `Bearer ${ADMIN}` } })).json()) as {
   today: string;
   items: Array<{ occurrenceId: string; checkinId: string; date: string; canAcknowledge: boolean }>;
 };
 const lunch = ledger.items.find((i) => i.checkinId === 'lunch' && i.date !== ledger.today && i.canAcknowledge);
 if (!lunch) throw new Error('no unacknowledged lunch check from the previous day');
-const ackUrl = ackUrlBuilder(BASE, ACK_SECRET)('demo', lunch.occurrenceId, 'dana');
+const ackUrl = ackUrlBuilder(BASE, ACK_SECRET)(HID, lunch.occurrenceId, 'dana');
 await at(3.2);
 await point(page.locator('#traffic > li').first());
 await at(6.8);
@@ -360,11 +351,55 @@ await page.mouse.move(pos.x, pos.y);
 await at(10.6);
 await page.setContent(architectureHtml, { waitUntil: 'networkidle' });
 await page.mouse.move(pos.x, pos.y);
-await at(15.6);
+await at(15.4);
 await page.setContent(endCardHtml, { waitUntil: 'networkidle' });
 await moveTo(1600, 950, 8);
-await end(9, 1.8);
+await end(9, 3.2);
 await closeClip('clip-5');
+
+// ---- Scene 10: Margaret's own good-night check-in passes 10 pm: Dana is emailed, in Margaret's name ----
+// A fresh household for this scene, with the family's daily check-ins switched off (as the guided tour does), so
+// the only loop on screen is the one Margaret set up. The set-up itself happens before the scene starts.
+await newClip();
+await page.goto(`${BASE}/simulator/`);
+await simulatorReady();
+await page.click('#demo-start');
+await page.waitForFunction(() => /7:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
+const hid10 = (await page.evaluate(() => sessionStorage.getItem('closed-loop-household')))!;
+const adminApi = (path: string, init: { method?: string; body?: unknown } = {}) =>
+  fetch(`${BASE}${path}`, {
+    method: init.method ?? 'GET',
+    headers: { authorization: `Bearer ${ADMIN}`, ...(init.body ? { 'content-type': 'application/json' } : {}) },
+    body: init.body ? JSON.stringify(init.body) : undefined,
+  }).then((r) => r.json());
+const view10 = (await adminApi(`/api/households/${hid10}`)) as { checkins: Array<{ id: string; active: boolean; author?: string }> };
+for (const c of view10.checkins.filter((c) => c.active && c.author !== 'person')) {
+  await adminApi(`/api/households/${hid10}/checkins/${c.id}`, { method: 'PUT', body: { ...c, active: false } });
+}
+await click(page.locator('.chip', { hasText: "If I haven't said good night by ten, let Dana know." }));
+await page.locator('.cap.assistant').last().waitFor();
+await wait(2500);
+await page.fill('#say-input', 'Yes, please.');
+await page.press('#say-input', 'Enter');
+await wait(3000);
+// Off camera: to 9:56 pm on this household's clock (the same tick the clock buttons run).
+const clock10 = (await adminApi(`/admin/clock?household=${hid10}`)) as { localNow: string };
+const [h10, m10] = clock10.localNow.slice(11, 16).split(':').map(Number);
+await adminApi(`/admin/clock?household=${hid10}`, { method: 'POST', body: { advanceSeconds: (21 * 60 + 56 - (h10! * 60 + m10!)) * 60 } });
+await page.waitForFunction(() => /9:5\d pm/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
+await wait(1200);
+await begin(10);
+await at(0.6);
+await point(page.locator('#loops'));
+await at(3.0);
+await click(page.locator('[data-adv="3600"]'));
+await page.locator('#mail li', { hasText: 'asked us to let you know' }).first().waitFor({ timeout: 20_000 });
+await at(5.0);
+await point(page.locator('#mail li', { hasText: 'asked us to let you know' }).first());
+await at(8.8);
+await point(page.locator('#loops'));
+await end(10, 1.0);
+await closeClip('clip-6');
 
 // ---- Finish ----
 await context.close();

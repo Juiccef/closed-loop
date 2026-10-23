@@ -1,0 +1,15 @@
+{
+  "order": [
+    { "scene": 0 },
+    { "file": "video/echo/build/hero.mp4" },
+    { "scene": 1 },
+    { "scene": 2 },
+    { "scene": 4 },
+    { "scene": 6 },
+    { "scene": 7 },
+    { "scene": 8 },
+    { "scene": 10 },
+    { "scene": 9 }
+  ],
+  "notes": "Scene numbers are recorder scenes (docs/narration.md). Recorded but left out to stay under 3:00: 3 (console wording check), 5 (follow-up: the clear yes). Add 5 back after 4 if the hero runs short."
+}

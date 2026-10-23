@@ -113,6 +113,8 @@ async function closeClip(name: string) {
   current.file = file;
   current.wall = wall;
   clips.push(current);
+  // Saved after every clip, so a failure late in a run keeps what was recorded.
+  await writeFile(join(OUT, 'marks.json'), JSON.stringify({ audioDelay: AUDIO_DELAY, durations, clips }, null, 2));
 }
 async function moveTo(x: number, y: number, steps = 28) {
   await page.mouse.move(x, y, { steps });
@@ -160,6 +162,17 @@ async function simulatorReady() {
   await wait(800);
 }
 
+/** Starts a fresh demo day and waits until the page is on the new household (the page already has one at 7:55 am). */
+async function freshDay() {
+  const before = await page.evaluate(() => sessionStorage.getItem('closed-loop-household'));
+  await page.click('#demo-start');
+  await page.waitForFunction((b) => {
+    const now = sessionStorage.getItem('closed-loop-household');
+    return !!now && now !== b && /7:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? '');
+  }, before, { timeout: 60_000 });
+  await wait(1500); // let the page settle on the new household before anything else is pressed
+}
+
 // ---- Setup (not part of the video) ----
 
 // The access code comes from .env (never printed). It is in session storage before any page script runs, so the
@@ -170,8 +183,7 @@ await context.addInitScript({
 await newClip();
 await page.goto(`${BASE}/simulator/`);
 await simulatorReady();
-await page.click('#demo-start');
-await page.waitForFunction(() => /7:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
+await freshDay();
 await page.click('[data-adv="3600"]');
 await page.waitForFunction(() => /8:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
 // Each visitor gets a demo household of their own; every scene tab opens on this one.
@@ -363,9 +375,8 @@ await closeClip('clip-5');
 await newClip();
 await page.goto(`${BASE}/simulator/`);
 await simulatorReady();
-await page.click('#demo-start');
-await page.waitForFunction(() => /7:5\d am/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
-const hid10 = (await page.evaluate(() => sessionStorage.getItem('closed-loop-household')))!;
+await freshDay();
+const hid10 = (await page.evaluate(() => sessionStorage.getItem('closed-loop-household')))!; // its family check-ins are switched off below
 const adminApi = (path: string, init: { method?: string; body?: unknown } = {}) =>
   fetch(`${BASE}${path}`, {
     method: init.method ?? 'GET',
@@ -382,12 +393,12 @@ await wait(2500);
 await page.fill('#say-input', 'Yes, please.');
 await page.press('#say-input', 'Enter');
 await wait(3000);
-// Off camera: to 9:56 pm on this household's clock (the same tick the clock buttons run).
-const clock10 = (await adminApi(`/admin/clock?household=${hid10}`)) as { localNow: string };
-const [h10, m10] = clock10.localNow.slice(11, 16).split(':').map(Number);
-await adminApi(`/admin/clock?household=${hid10}`, { method: 'POST', body: { advanceSeconds: (21 * 60 + 56 - (h10! * 60 + m10!)) * 60 } });
-await page.waitForFunction(() => /9:5\d pm/.test(document.querySelector('#clock-time')?.textContent ?? ''), null, { timeout: 30_000 });
-await wait(1200);
+// Off camera: to 9:55 pm with the page's own clock buttons (each runs the same tick EventBridge runs, and redraws).
+for (const [adv, shows] of [['18000', /12:5\d pm/], ['18000', /5:5\d pm/], ['3600', /6:5\d pm/], ['3600', /7:5\d pm/], ['3600', /8:5\d pm/], ['3600', /9:5\d pm/]] as const) {
+  await page.click(`[data-adv="${adv}"]`);
+  await page.waitForFunction((re) => new RegExp(re).test(document.querySelector('#clock-time')?.textContent ?? ''), shows.source, { timeout: 45_000 });
+}
+await wait(1500);
 await begin(10);
 await at(0.6);
 await point(page.locator('#loops'));

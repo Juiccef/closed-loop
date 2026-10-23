@@ -376,16 +376,27 @@ await page.goto(`${BASE}/simulator/`);
 await simulatorReady();
 await freshDay();
 const hid10 = (await page.evaluate(() => sessionStorage.getItem('closed-loop-household')))!; // its family check-ins are switched off below
-const adminApi = (path: string, init: { method?: string; body?: unknown } = {}) =>
-  fetch(`${BASE}${path}`, {
-    method: init.method ?? 'GET',
-    headers: { authorization: `Bearer ${ADMIN}`, ...(init.body ? { 'content-type': 'application/json' } : {}) },
-    body: init.body ? JSON.stringify(init.body) : undefined,
-  }).then((r) => r.json());
-const view10 = (await adminApi(`/api/households/${hid10}`)) as { checkins: Array<{ id: string; active: boolean; author?: string }> };
-for (const c of view10.checkins.filter((c) => c.active && c.author !== 'person')) {
-  await adminApi(`/api/households/${hid10}/checkins/${c.id}`, { method: 'PUT', body: { ...c, active: false } });
+/** Console/admin API call with the access code; retried, since a new AWS account allows only 10 Lambdas at once. */
+async function adminApi(path: string, init: { method?: string; body?: unknown } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    const r = await fetch(`${BASE}${path}`, {
+      method: init.method ?? 'GET',
+      headers: { authorization: `Bearer ${ADMIN}`, ...(init.body ? { 'content-type': 'application/json' } : {}) },
+      body: init.body ? JSON.stringify(init.body) : undefined,
+    });
+    if (r.ok) return r.json();
+    if (attempt >= 5 || (r.status < 429 && r.status !== 409)) throw new Error(`${init.method ?? 'GET'} ${path.split('?')[0]}: HTTP ${r.status}`);
+    await wait(800 * attempt);
+  }
 }
+type View10 = { checkins: Array<{ id: string; active: boolean; author?: string }> };
+const familyOn = async () => ((await adminApi(`/api/households/${hid10}`)) as View10).checkins.filter((c) => c.active && c.author !== 'person');
+for (let round = 0; round < 3; round++) {
+  const on = await familyOn();
+  if (!on.length) break;
+  for (const c of on) await adminApi(`/api/households/${hid10}/checkins/${c.id}`, { method: 'PUT', body: { ...c, active: false } });
+}
+if ((await familyOn()).length) throw new Error("could not switch off the family's check-ins for scene 10");
 await click(page.locator('.chip', { hasText: "If I haven't said good night by ten, let Dana know." }));
 await page.locator('.cap.assistant').last().waitFor();
 await wait(2500);

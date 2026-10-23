@@ -1,13 +1,13 @@
 {
   "order": [
     {
-      "file": "video/echo/build/hero.mp4"
-    },
-    {
       "scene": 1
     },
     {
       "scene": 2
+    },
+    {
+      "file": "video/echo/build/hero.mp4"
     },
     {
       "scene": 4

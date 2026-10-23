@@ -41,7 +41,7 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Expected:** An API to start a check-in at a scheduled time, or to create a native reminder from a tool.
 - **Actual:** None found. "Proactive" appears only as "proactive or conversational discovery" (Alexa+ choosing to use an add-on during a conversation the person started) and, in certification, "experiences must respond to Alexa+ proactively". The only push notification mentioned is for starting OAuth on screenless devices. Routines invoking an add-on: not documented.
 - **Severity:** High for this use case: a daily check-in for a person living alone cannot be started by the service.
-- **Workaround:** Turns are started by the person, a household routine, or (in the demo) the simulator. The scheduler only closes windows and emails family. Stated on every surface.
+- **Workaround:** Turns are started by the person, a household routine, or (in the demo) the simulator. The scheduler only closes windows and emails family. Stated on every surface. On a real Echo, the classic skill in `packages/alexa-skill` uses the Alexa Reminders API to have Alexa speak first ("Margaret, it's time for your lunchtime check. Say: Alexa, open Closed Loop."). That API exists for classic custom skills, which shows the primitive is feasible; it isn't available to MCP add-ons.
 - **Suggestion (Critical feature request):** A consent-gated proactive primitive for MCP add-ons, for example a tool result that schedules a native reminder, or an add-on-initiated prompt with per-household opt-in and rate limits.
 
 ## 5. Add-on docs index URLs fail
@@ -147,6 +147,26 @@ Each entry: task, steps, expected vs actual, severity, workaround, suggestion. S
 - **Severity:** Medium: the feature works whenever the phrase reaches the add-on (for example "tell Closed Loop good night"), but the most natural form may not.
 - **Workaround:** The simulator sends what the person types to the add-on, and the docs say this is unverified. The phrase is the person's own choice, so it can be one that names the add-on. A late phrase is still recorded honestly as after the window.
 - **Suggestion:** Document utterance routing to add-ons, and let an add-on declare a few consent-gated phrases it wants to hear (the listening side of the proactive primitive in entry 4).
+
+## 15. ask-sdk-core skips skill ID verification when the ID is unset
+
+- **Task:** Check the skill ID on every request to the classic Alexa skill for the Echo Show (`packages/alexa-skill`).
+- **Steps:** Used `SkillBuilders.custom().withSkillId(process.env.ALEXA_SKILL_ID)`; read `ask-sdk-core` 2.14.0 `dist/skill/CustomSkill.js`.
+- **Expected:** A request for another skill is rejected.
+- **Actual:** The check is `if (this.skillId != null && applicationId !== this.skillId) throw`. With the ID unset (a missing environment variable), every request for any skill is accepted, silently.
+- **Severity:** Medium (fails open).
+- **Workaround:** The skill compares `context.System.application.applicationId` with the configured ID itself and refuses when either is missing, before ask-sdk sees the request. The SAM `AlexaSkill` trigger also carries the skill ID, and the function only exists when the ID is set. Tested.
+- **Suggestion:** Throw at build time when `withSkillId` gets an empty value, or fail closed.
+
+## 16. Reminders permission: no way to check it, and the refusal code is undocumented
+
+- **Task:** Send the permission card when the Reminders permission isn't granted, before creating a reminder.
+- **Steps:** Read "Alexa Reminders API Overview", the Reminders API reference, the request and response JSON reference, and the customer contact permissions page.
+- **Expected:** A field in the request saying the permission is granted, or a documented status code for "not granted".
+- **Actual:** `context.System.user.permissions.consentToken` is marked deprecated ("use the `apiAccessToken`"). The `apiAccessToken` is sent "whether or not the customer granted permissions", so it can't be used to decide. The Reminders reference lists 401 codes for token problems (`UNAUTHORIZED`, `INVALID_BEARER_TOKEN`, `NOT_IN_SESSION`, ...) and 403 codes `MAX_REMINDERS_EXCEEDED` and `DEVICE_NOT_SUPPORTED`, but doesn't say which one a missing grant returns. The same page gives success as `201 Created` in one place and `200 OK` in another.
+- **Severity:** Low to Medium (the card may not be sent when it should be).
+- **Workaround:** Call the API and read the refusal: any 401 except `NOT_IN_SESSION`, or any 403 other than the two documented codes, sends the `AskForPermissionsConsent` card. Any 2xx counts as created. Unverified on a device until filming.
+- **Suggestion:** Document the status and code for "permission not granted", and fix the success code.
 
 ---
 

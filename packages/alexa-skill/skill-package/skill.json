@@ -1,0 +1,40 @@
+{
+  "manifest": {
+    "manifestVersion": "1.0",
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "Closed Loop",
+          "summary": "Daily check-ins that close the loop. Reminders and check-ins only; not an emergency alert system.",
+          "description": "A classic Alexa custom skill that calls the Closed Loop MCP server (the same server an Alexa+ add-on would use). The person answers daily check-ins the family wrote, or sets up one of their own: \"If I haven't said good night by nine thirty, let Dana know.\" Saying \"good night\" closes it; if it stays open, the contact gets an email. Reminders and check-ins only. Not an emergency alert system. No answer does not mean an emergency. This is not an Alexa+ add-on.",
+          "examplePhrases": ["Alexa, open Closed Loop", "Alexa, tell Closed Loop good night", "Alexa, ask Closed Loop how Mom is doing"],
+          "keywords": ["check-in", "reminders", "family"]
+        }
+      },
+      "isAvailableWorldwide": false,
+      "distributionCountries": ["US"],
+      "testingInstructions": "Development stage only, on the developer's own devices. Grant the Reminders permission in the Alexa app to test reminders.",
+      "category": "CALENDARS_AND_REMINDERS"
+    },
+    "permissions": [{ "name": "alexa::alerts:reminders:skill:readwrite" }],
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "arn:aws:lambda:us-east-1:ACCOUNT_ID:function:closed-loop-alexa-skill"
+        },
+        "interfaces": [
+          {
+            "type": "ALEXA_PRESENTATION_APL",
+            "supportedViewports": [
+              { "mode": "HUB", "shape": "ROUND", "minWidth": 100, "maxWidth": 599, "minHeight": 100, "maxHeight": 599 },
+              { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 960, "maxWidth": 1279, "minHeight": 100, "maxHeight": 599 },
+              { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 960, "maxWidth": 1279, "minHeight": 600, "maxHeight": 959 },
+              { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 1280, "maxWidth": 1920, "minHeight": 600, "maxHeight": 1279 },
+              { "mode": "HUB", "shape": "RECTANGLE", "minWidth": 1920, "maxWidth": 2560, "minHeight": 960, "maxHeight": 1279 }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

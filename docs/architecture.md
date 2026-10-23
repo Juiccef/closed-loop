@@ -7,6 +7,7 @@
 | Web function | Lambda (arm64, Node 22, 2048 MB) behind one Function URL | `/mcp` (MCP server), console API, signed acknowledge links, admin clock, planner, static pages |
 | Tick function | Lambda, invoked by EventBridge Scheduler every minute | Creates the day's check-in occurrences, closes windows, runs the escalation ladder, sends SES email |
 | Classifier function | Lambda, DynamoDB Streams with an event filter on new `UTT#` items | Bedrock second opinion on what the person said; can only move a record toward caution |
+| Skill function (optional) | Lambda, Alexa Skills Kit trigger locked to one skill ID; created only when `ALEXA_SKILL_ID` is set | Classic Alexa custom skill for a real Echo Show (not an Alexa+ add-on): rules planner in process, MCP `tools/call` on `/mcp` for the shared `demo` household, Reminders API, APL card. See [echo-show.md](echo-show.md) |
 | Table | DynamoDB, on-demand, single table, TTL, Streams (`NEW_IMAGE`) | Households, consent, check-ins, ladder, occurrences, utterances, audit events, alert counters, clock |
 | Keep-warm | EventBridge Scheduler every 5 minutes | One warm instance of the web function (cold start is 0.56–0.64 s; Alexa+ requires < 500 ms) |
 
@@ -96,9 +97,17 @@ Judges use the hosted demo at the same time, so each visitor gets a copy of the 
 
 Both are deployed and pass Bedrock's request validation; the account's daily token quota is 0, so today both fall back (FRICTION_LOG #7).
 
+## The Echo Show skill (classic Alexa skill)
+
+- **A client, not a second server.** The skill runs the rules planner in process (it is a pure function), so it needs no console access code and no extra hop to `/planner`, then calls the MCP tool on the live `/mcp` with the static demo token. It initializes once per Lambda container; the server is stateless, so warm turns go straight to `tools/call`.
+- **Alexa session attributes** hold what the simulator keeps in page state: the due check-ins still to ask, the most recent one, a `set_my_checkin` preview waiting for yes or no, and the person's own check-ins. Everything recorded lives on the server.
+- **Server lines are read as returned.** The skill adds only its own short prompts ("What would you like to do?") after a server line, never inside one, and none after a safety line. After a safety line the session ends outright, so the person's next words reach Alexa itself.
+- **Speaking first** uses the Alexa Reminders API (in session only, after the person asks): one reminder a minute out for filming, or one daily reminder at the start of each family check-in window, in the household's time zone. The MCP tools don't return the time zone, so the skill is configured with the demo household's (America/New_York).
+- **Skill ID** is checked twice: by the Alexa Skills Kit trigger on the function, and in code before ask-sdk sees the request (ask-sdk skips its own check when no ID is set; FRICTION_LOG #15).
+
 ## What is deliberately not here
 
 - No server-initiated elicitation, sampling, or MCP Tasks.
 - No free-text tool ("ask anything"), no unbounded strings.
 - No medical content: no drug names, doses, or advice anywhere in tool text or caregiver-authored prompts (linted).
-- No claim that Alexa can speak first, or that this runs on real Alexa+.
+- No claim that an MCP add-on can speak first, or that this runs on real Alexa+. On a real Echo, the classic skill has Alexa speak first through the Reminders API, which add-ons can't use; it is labelled as a classic skill everywhere.

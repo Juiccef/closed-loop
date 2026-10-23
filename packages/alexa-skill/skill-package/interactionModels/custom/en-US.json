@@ -1,0 +1,113 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "closed loop",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        { "name": "AMAZON.YesIntent", "samples": [] },
+        { "name": "AMAZON.NoIntent", "samples": [] },
+        {
+          "name": "SayIntent",
+          "slots": [{ "name": "utterance", "type": "CATCH_ALL" }],
+          "samples": ["{utterance}"]
+        },
+        {
+          "name": "FamilyIntent",
+          "slots": [{ "name": "name", "type": "FAMILY_NAME" }],
+          "samples": [
+            "how {name} is doing",
+            "how {name} is doing today",
+            "how is {name} doing",
+            "how is {name} doing today",
+            "how's {name} doing",
+            "how's {name} doing today",
+            "how {name} is",
+            "how is {name}",
+            "how is {name} today",
+            "how's {name}",
+            "how did {name} do today",
+            "how the day went for {name}",
+            "is {name} okay",
+            "is {name} doing okay",
+            "if {name} is okay",
+            "what {name} said today"
+          ]
+        },
+        {
+          "name": "RemindMeIntent",
+          "slots": [{ "name": "duration", "type": "AMAZON.DURATION" }],
+          "samples": [
+            "remind me to check in in {duration}",
+            "remind me to check in",
+            "remind me in {duration}",
+            "remind me to do my check in in {duration}",
+            "set a check in reminder for {duration}",
+            "set a check in reminder in {duration}",
+            "give me a check in reminder in {duration}"
+          ]
+        },
+        {
+          "name": "DailyRemindersIntent",
+          "slots": [],
+          "samples": [
+            "set my daily reminders",
+            "set up my daily reminders",
+            "set my daily check in reminders",
+            "set up my daily check in reminders",
+            "set daily check in reminders",
+            "set up daily reminders",
+            "remind me every day",
+            "remind me about my check ins every day",
+            "add my daily reminders",
+            "add daily check in reminders"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "CATCH_ALL",
+          "values": [
+            { "name": { "value": "if I haven't said good night by nine thirty let Dana know" } },
+            { "name": { "value": "if I haven't said good night by ten let Dana know" } },
+            { "name": { "value": "if I haven't said good morning by nine let Dana know" } },
+            { "name": { "value": "if I'm not home by six let Sam know" } },
+            { "name": { "value": "good night" } },
+            { "name": { "value": "good morning" } },
+            { "name": { "value": "I'm home" } },
+            { "name": { "value": "I think so maybe after lunch" } },
+            { "name": { "value": "yes I did" } },
+            { "name": { "value": "yes I had my lunch" } },
+            { "name": { "value": "not yet" } },
+            { "name": { "value": "I'll do it later" } },
+            { "name": { "value": "after lunch" } },
+            { "name": { "value": "no I didn't" } },
+            { "name": { "value": "any check ins" } },
+            { "name": { "value": "how am I doing today" } },
+            { "name": { "value": "who can see my check ins" } },
+            { "name": { "value": "cancel my good night check" } },
+            { "name": { "value": "pause the check ins for today" } },
+            { "name": { "value": "I'm scared" } },
+            { "name": { "value": "I feel confused" } },
+            { "name": { "value": "where is everyone" } },
+            { "name": { "value": "I've fallen and I can't get up" } },
+            { "name": { "value": "I need help" } },
+            { "name": { "value": "I can't breathe" } },
+            { "name": { "value": "I'm not feeling well" } }
+          ]
+        },
+        {
+          "name": "FAMILY_NAME",
+          "values": [
+            { "name": { "value": "Mom", "synonyms": ["my mom", "mum", "my mum", "mother", "my mother", "mama", "mommy"] } },
+            { "name": { "value": "Margaret" } },
+            { "name": { "value": "Grandma", "synonyms": ["nana", "granny", "my grandma"] } }
+          ]
+        }
+      ]
+    }
+  }
+}

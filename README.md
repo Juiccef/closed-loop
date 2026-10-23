@@ -61,6 +61,10 @@ npm run second-client -- http://localhost:5173/mcp local-dev-mcp
 spikes/handshake.sh http://localhost:5173 local-dev-mcp
 ```
 
+### On a real Echo Show (classic Alexa skill, not an Alexa+ add-on)
+
+`packages/alexa-skill` is a classic Alexa custom skill, run in the development stage on the developer's own Echo Show. It is a thin MCP client of the same live server: what Alexa hears goes through the simulator's rules planner, the skill calls the MCP tool, and Alexa reads the server's `say` text unchanged. An Echo Show card mirrors the MCP App card. Because a classic skill can use the Alexa Reminders API, Alexa can speak first there: *"Margaret, it's time for your lunchtime check. Say: Alexa, open Closed Loop."* MCP add-ons have no such API (FRICTION_LOG #4). Setup, filming lines, and what is verified: [docs/echo-show.md](docs/echo-show.md).
+
 ## Architecture
 
 ```mermaid
@@ -78,6 +82,8 @@ flowchart LR
     CLS[Classifier Lambda<br/>second opinion]
     BR[Amazon Bedrock<br/>Converse API]
   end
+  ECHO[Echo Show<br/>classic Alexa skill, dev stage] --> SKILL[Skill Lambda<br/>rules planner · MCP client · Reminders API]
+  SKILL -- "tools/call" --> WEB
   SIM -- "initialize · tools/list · tools/call" --> WEB
   SIM -- planner --> WEB
   CON --> WEB
@@ -163,7 +169,7 @@ cp .env.example .env    # fill in tokens, SES addresses, optional Bedrock model 
 npm run deploy          # builds the Lambdas with esbuild and runs sam deploy
 ```
 
-The stack creates one DynamoDB table (on-demand, TTL, Streams), three arm64 Lambda functions (web, tick, classifier), two EventBridge Scheduler schedules, least-privilege IAM for SES and Bedrock, and 7-day log retention. It stays inside the free tier for a demo. Run the end-to-end check against it:
+The stack creates one DynamoDB table (on-demand, TTL, Streams), three arm64 Lambda functions (web, tick, classifier; a fourth for the Echo skill when `ALEXA_SKILL_ID` is set, see [docs/echo-show.md](docs/echo-show.md)), two EventBridge Scheduler schedules, least-privilege IAM for SES and Bedrock, and 7-day log retention. It stays inside the free tier for a demo. Run the end-to-end check against it:
 
 ```bash
 npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOKEN" "$MCP_BEARER_TOKEN"
@@ -172,7 +178,7 @@ npm run e2e -- https://<function-url-id>.lambda-url.us-east-1.on.aws "$ADMIN_TOK
 ## Tests
 
 ```bash
-npm test            # 424 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier, per-visitor isolation
+npm test            # 444 tests: state machine, ladder, the person's own check-ins, 265-reply safety eval, stores, MCP protocol, OAuth, planner, console API, classifier, per-visitor isolation, the Echo skill
 npm run typecheck
 npm run e2e         # replays the demo against a running deployment, checks the ledger, and checks two visitors stay isolated
 ```
@@ -182,8 +188,8 @@ Set `DDB_TEST_TABLE` to run the store contract tests against a real DynamoDB tab
 ## Known limits (stated plainly)
 
 - **"Good night" reaching the add-on is unverified.** The person's own check-ins close when the person speaks first, but whether Alexa+ routes a bare phrase like "good night" to an add-on, rather than answering it itself, is not documented (FRICTION_LOG #14). In the simulator, what Margaret types goes to the add-on.
-- **No proactive speech.** No documented way exists for an MCP add-on to start a conversation, set a native reminder, or be invoked by a routine. That is the single most important missing primitive for this use case (see [FRICTION_LOG.md](FRICTION_LOG.md) #4 and the feature request in [PRODUCT_FEEDBACK.md](PRODUCT_FEEDBACK.md)).
-- **Not tested against real Alexa+.** Add-on tooling is partner-only. The server follows Alexa's published requirements and is exercised by three different MCP clients.
+- **No proactive speech for add-ons.** No documented way exists for an MCP add-on to start a conversation, set a native reminder, or be invoked by a routine. (The classic Echo skill uses the Reminders API for this; that API is for classic skills, not add-ons.) That is the single most important missing primitive for this use case (see [FRICTION_LOG.md](FRICTION_LOG.md) #4 and the feature request in [PRODUCT_FEEDBACK.md](PRODUCT_FEEDBACK.md)).
+- **Not tested against real Alexa+.** Add-on tooling is partner-only. The server follows Alexa's published requirements and is exercised by three different MCP clients. A fourth, a classic Alexa skill for a real Echo Show (not an Alexa+ add-on), is in `packages/alexa-skill`.
 - **Bedrock on this account.** The new AWS account used for the hackathon has a Bedrock daily token quota of 0 (FRICTION_LOG #7). The Bedrock planner and classifier are wired, deployed, and pass Bedrock's request validation; until the quota is raised they fall back to rules and say so.
 - **Auth.** OAuth 2.1 account linking is implemented and tested against the published Alexa+ requirements, but not against Alexa's real linking service (partner-only). Access tokens are self-contained JWTs, so unlinking stops refreshes immediately and existing access ends within an hour.
 - **Cold starts** of the full web function are about 0.9 s (0.61 s init plus a first request that creates the day's records); warm calls take 4–28 ms server-side. A keep-warm schedule keeps one instance ready because new accounts cannot use provisioned concurrency (FRICTION_LOG #8).
@@ -197,6 +203,7 @@ packages/api/           console API, ack links, admin clock, planners, web + Lam
 packages/tick/          tick Lambda, SES and file mailers
 packages/classifier/    DynamoDB Streams second-opinion Lambda
 packages/store-dynamo/  DynamoDB implementation of the store
+packages/alexa-skill/   classic Alexa skill for a real Echo (MCP client, Reminders API, APL card) + skill package
 apps/                   simulator, console, landing page (static, no build step)
 infra/template.yaml     AWS SAM
 scripts/                dev server, build, deploy, e2e replay, second MCP client

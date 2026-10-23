@@ -11,6 +11,7 @@ npm run build
 EXTRA=()
 [ -n "${BEDROCK_MODEL_ID:-}" ] && EXTRA+=("BedrockModelId=$BEDROCK_MODEL_ID")
 [ -n "${ALEXA_REDIRECT_URIS:-}" ] && EXTRA+=("AlexaRedirectUris=$ALEXA_REDIRECT_URIS")
+[ -n "${ALEXA_SKILL_ID:-}" ] && EXTRA+=("AlexaSkillId=$ALEXA_SKILL_ID")
 sam deploy -t infra/template.yaml \
   --stack-name "${STACK_NAME:-closed-loop}" \
   --region "${AWS_REGION:-us-east-1}" \

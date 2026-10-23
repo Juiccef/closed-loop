@@ -1,6 +1,6 @@
 # Devpost submission text (copy and paste)
 
-Fill in the video link (`<VIDEO_URL>`) before submitting.
+Demo video: https://youtu.be/tYxgBasPlOA
 
 ---
 
@@ -45,6 +45,7 @@ Care tools are usually set up by the family, about the person. Closed Loop start
 - **Shows results as MCP App cards** (`ui://` resource, SEP-1865) using Alexa+'s documented `_meta.ui` placement.
 - **Links accounts with OAuth 2.1** the way Alexa+ add-ons do, with separate link codes for the person's own Alexa and a family member's.
 - **Ships an Agent Skill** (`skills/closed-loop-checkins/SKILL.md`): the check-in protocol and honesty rules for any agent connected to the server.
+- **Runs on Alexa today, too.** A thin classic Alexa custom skill (development stage, `packages/alexa-skill`) calls the same MCP server, with an Echo Show card and a reminder through the Alexa Reminders API. The video shows it in Amazon's Alexa developer console simulator (0:29). It is not an Alexa+ add-on; add-on tooling is partner-only.
 
 It is deliberately not an emergency system, and it says so on every surface. MCP add-ons have no documented way to speak first, so turns start with the person, a household routine, or (in the demo) the simulator.
 
@@ -52,11 +53,11 @@ It is deliberately not an emergency system, and it says so on every surface. MCP
 
 | The Alexa+ judging guidance lists | Closed Loop | Video |
 |---|---|---|
-| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent and email cap, and emails at the person's own deadline even during quiet hours, because that is what they asked for. A one-click guided tour plays it live: `/simulator/?tour=good-night`. | `<TIMESTAMP>` |
-| An agentic workflow that orchestrates across services autonomously | Every minute EventBridge Scheduler runs a tick that closes windows in DynamoDB, emails family through SES, escalates to a second contact on day two, and stops when someone acknowledges. No human in the loop until a human is needed. | 1:33 |
-| A context-aware add-on that keeps state across sessions | The ledger, follow-ups at the time the person chose, the distress quiet period, and the family's view of the day all persist across sessions. | 0:56, 1:20, 2:13 |
-| Media support (cards) and MCP Apps | One MCP App card renders all eight tool results, including the family summary and the person's own check-in, in a sandboxed iframe with the spec's handshake. | 0:56 |
-| Agent Skills | `skills/closed-loop-checkins/SKILL.md` | 2:38 |
+| A design that works inside the platform's limits | Add-ons cannot speak first, so the person's own check-ins close when the person speaks first: "If I haven't said good night by ten, let Dana know", then "Good night". It reuses the same state machine, ladder, consent and email cap, and emails at the person's own deadline even during quiet hours, because that is what they asked for. A one-click guided tour plays it live: `/simulator/?tour=good-night`. | 0:29, 2:11 |
+| An agentic workflow that orchestrates across services autonomously | Every minute EventBridge Scheduler runs a tick that closes windows in DynamoDB, emails family through SES, escalates to a second contact on day two, and stops when someone acknowledges. No human in the loop until a human is needed. | 1:14 |
+| A context-aware add-on that keeps state across sessions | The ledger, follow-ups at the time the person chose, the distress quiet period, and the family's view of the day all persist across sessions. | 0:50, 1:54, 2:11 |
+| Media support (cards) and MCP Apps | One MCP App card renders all eight tool results, including the family summary and the person's own check-in, in a sandboxed iframe with the spec's handshake. | 1:09 |
+| Agent Skills | `skills/closed-loop-checkins/SKILL.md` | 2:30 |
 | Not a single-turn Q&A bot | Answers, deferrals and follow-ups span hours and days; family hear the result later from their own device. | throughout |
 
 ### How we built it
@@ -98,7 +99,7 @@ TypeScript, Node.js, Model Context Protocol (TypeScript SDK 1.x, MCP Apps), Agen
 ## Links
 
 - Repository: https://github.com/Juiccef/closed-loop (MIT license)
-- Demo video: `<VIDEO_URL>`
+- Demo video: https://youtu.be/tYxgBasPlOA
 - Guided demo for judges (2 minutes, live): `<LIVE_URL>/simulator/?tour=good-night` (access code in the judges-only testing field)
 
 ## Product feedback (required: every tool used)

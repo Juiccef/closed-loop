@@ -8,7 +8,7 @@
 >
 > **Voice turns.** Check-in conversations are started by the person, a household routine, or the simulator. MCP add-ons have no documented way to speak first.
 
-Demo video: _link added at submission_ · Live demo: _URL shared with judges (access code required)_
+Demo video: [https://youtu.be/tYxgBasPlOA](https://youtu.be/tYxgBasPlOA) · Live demo: _URL shared with judges (access code required)_
 
 ---
 

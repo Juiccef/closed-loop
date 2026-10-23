@@ -1,4 +1,16 @@
-# Echo Show footage for the demo video
+# The video's opening: Alexa developer console take, or Echo Show footage
+
+**Current opening: Amazon's Alexa developer console.** Sign in once (`npx tsx scripts/video/console.ts login`; your password is typed by you, in the window it opens), then record the take and build the segment:
+
+```bash
+T_SET=3.0 T_YES=12.3 T_NIGHT=14.6 T_END=20.5 npx tsx scripts/video/console.ts record
+npx tsx scripts/video/echo.ts --console
+npm run video:assemble
+```
+
+The console take has no sound, so `video/narration/hero.mp3` plays over it. Every frame is labelled as the developer console simulator, not a real device.
+
+## Echo Show footage (optional, replaces the console take)
 
 Put the phone clips here, named by shot. Landscape, the Echo Show screen filling most of the frame, phone held still (a stand helps), the room quiet so Alexa is clearly heard. Any phone format works (`.mov`, `.mp4`, `.m4v`; 1080p or 4K; 30 or 60 fps). The clips are not committed.
 

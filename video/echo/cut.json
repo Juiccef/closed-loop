@@ -1,12 +1,44 @@
 {
   "label": "Real Echo Show. Closed Loop runs here as a classic Alexa custom skill (development stage) calling the same MCP server. Not an Alexa+ add-on.",
   "clips": [
-    { "file": "a", "caption": "Alexa speaks first: a reminder Closed Loop set", "start": 0, "end": null },
-    { "file": "b", "caption": "A check-in set by voice: “If I haven’t said good night by ten thirty, let Dana know”", "start": 0, "end": null },
-    { "file": "c", "caption": "“Alexa, tell Closed Loop good night” closes the loop", "start": 0, "end": null }
+    {
+      "file": "a",
+      "caption": "Alexa speaks first: a reminder Closed Loop set",
+      "start": 0,
+      "end": null
+    },
+    {
+      "file": "b",
+      "caption": "A check-in set by voice: “If I haven’t said good night by ten thirty, let Dana know”",
+      "start": 0,
+      "end": null
+    },
+    {
+      "file": "c",
+      "caption": "“Alexa, tell Closed Loop good night” closes the loop",
+      "start": 0,
+      "end": null
+    }
   ],
   "optional": [
-    { "file": "d", "caption": "Family asks: “Alexa, ask Closed Loop how Mom is doing”", "start": 0, "end": null },
-    { "file": "e", "caption": "“I think so, maybe after lunch” is recorded as said later, not done", "start": 0, "end": null }
-  ]
+    {
+      "file": "d",
+      "caption": "Family asks: “Alexa, ask Closed Loop how Mom is doing”",
+      "start": 0,
+      "end": null
+    },
+    {
+      "file": "e",
+      "caption": "“I think so, maybe after lunch” is recorded as said later, not done",
+      "start": 0,
+      "end": null
+    }
+  ],
+  "console": {
+    "caption": "Amazon’s Alexa developer console: a check-in set in plain words, then closed with “good night”",
+    "label": "Amazon’s Alexa developer console simulator. Closed Loop runs here as a classic Alexa custom skill (development stage) calling the same MCP server. Not an Alexa+ add-on.",
+    "tag": "Developer console",
+    "narration": "video/narration/hero.mp3",
+    "delay": 0.4
+  }
 }

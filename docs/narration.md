@@ -18,7 +18,9 @@ Voice: Carolyn (warm, grounded American narrator), model `eleven_v4`. Generated 
 | 9 | 15.0 | The same endpoint passes the official MCP Inspector, links accounts with OAuth the way Alexa Plus add-ons do, and ships an Agent Skill for any agent. It runs on Lambda, DynamoDB, EventBridge and SES. *(Cut from the 20.7 s take after "SES": the "speak first" ask is gone now that the Echo Show shows a workaround.)* |
 | 10 | 10.3 | And if Margaret never says good night? Once ten o'clock passes, Dana gets an email in Margaret's name, because Margaret asked for it. Even in quiet hours. |
 
-The Echo Show hero has no narration: the clips keep Alexa's own voice, and each carries a caption and the "real device, classic Alexa skill, not an Alexa+ add-on" label ([video/echo/README.md](../video/echo/README.md)). The final order is in [video/cut.json](../video/cut.json).
+| hero | 16.6 | This is Amazon's own Alexa developer console, testing Closed Loop as a classic Alexa skill on the same MCP server. Margaret sets up a check-in in plain words. Nothing is set until Margaret says yes. And saying good night closes the loop. *(Over the opening, recorded in the Alexa developer console's simulator: the screen recording has no sound. Lines are typed at 3.0, 12.3 and 14.6 s.)* |
+
+The opening is a take in Amazon's Alexa developer console (`scripts/video/console.ts`), labelled on every frame as the console simulator: a classic Alexa skill calling the same MCP server, not an Alexa+ add-on. Phone footage of a real Echo Show can replace it (`video/echo/README.md`). The final order is in [video/cut.json](../video/cut.json).
 
 If AWS raises the Bedrock quota before recording, scene 9 can say "Lambda, DynamoDB, EventBridge, SES and Bedrock". Until then, leave Bedrock out: the deployed planner is falling back to rules.
 
